@@ -9,8 +9,8 @@ A dev friendly tool for generating source code from templates & reducing boilerp
 
 ### Task List
 
-[] Initialize node project with pnpm & typescript
-[] Integrate libraries/tools required for staring
+[✅] Initialize node project with pnpm & typescript
+[✅] Integrate libraries/tools required for staring
 [] Add typings for Input spec
 [] Add template for SvelteKit
 [] Add logic to generate output files
