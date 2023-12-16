@@ -1,0 +1,62 @@
+{
+  "name": "source-crafter",
+  "version": "0.0.1",
+  "description": "A tool for generating source code from a template and a data file",
+  "main": "./dist/index.js",
+  "bin": {
+    "type-crafter": "./dist/index.js"
+  },
+  "keywords": [],
+  "type": "module",
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/*.spec.*"
+  ],
+  "scripts": {
+    "dev": "tsc --watch",
+    "format:all": "npx prettier --write .",
+    "lint:all": "eslint . --ext .ts",
+    "clean:output": "rm -rf dist",
+    "build": "npm run clean:output && rollup --config rollup.config.js",
+    "publish": "node scripts/publish.js",
+    "changeset:version": "changeset version && git add --all"
+  },
+  "author": "Sahil Sinha",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sinha-sahil/source-crafter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sinha-sahil/source-crafter/issues"
+  },
+  "homepage": "https://github.com/sinha-sahil/source-crafter#readme",
+  "devDependencies": {
+    "rollup": "^4.9.0",
+    "type-crafter": "^0.3.0",
+    "typescript": "^5.3.3",
+    "@changesets/cli": "^2.26.2",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-replace": "^5.0.5",
+    "@rollup/plugin-typescript": "^11.1.5",
+    "@types/node": "^20.8.4",
+    "@typescript-eslint/eslint-plugin": "^6.7.5",
+    "@typescript-eslint/parser": "^6.7.5",
+    "commander": "^11.1.0",
+    "eslint": "^8.51.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-config-standard-with-typescript": "^39.1.1",
+    "eslint-plugin-import": "^2.25.2",
+    "eslint-plugin-n": "^15.0.0 || ^16.0.0 ",
+    "eslint-plugin-promise": "^6.0.0",
+    "handlebars": "^4.7.8",
+    "husky": "^8.0.3",
+    "prettier": "^3.0.3",
+    "rollup-plugin-copy": "^3.5.0",
+    "tslib": "^2.6.2",
+    "type-decoder": "^1.2.0",
+    "yaml": "^2.3.2"
+  }
+}
