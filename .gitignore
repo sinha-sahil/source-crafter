@@ -7,3 +7,9 @@
 /package/
 /examples/output
 /**/.pnpm-store/
+
+# Rust
+/target/
+/pkg/
+**/*.rs.bk
+Cargo.lock
