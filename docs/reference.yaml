@@ -1,0 +1,163 @@
+# Orrery — Reference YAML Template
+#
+# This file demonstrates every field the engine supports.
+# Use it as a reference when writing your own templates.
+#
+# The five sections: page, style, data, regions, interactions
+
+page: product-search
+
+# ── Global Style Tokens ──
+# Referenced anywhere via $style.primary-color, $style.accent-color, etc.
+style:
+  primary-color: "#238636"
+  accent-color: "#58a6ff"
+  border-radius: 8
+
+# ── Data Providers ──
+# Maps data names to provider function names.
+# The engine calls these and makes results available for $references.
+data:
+  products: searchProductsProvider
+  user: userProfileProvider
+
+# ── Regions ──
+# Named layout containers. Each can hold components or sub-regions.
+regions:
+
+  # ── Header ──
+  header:
+    direction: horizontal         # horizontal | vertical | grid
+    justify: space-between        # start | center | end | space-between
+    style:
+      background: "#1a1a2e"
+      padding: 16
+    regions:
+      left:
+        direction: horizontal
+        gap: 8                    # spacing between children (px)
+        components:
+          - type: toolbar
+            id: logo
+            props:
+              title: "ShopApp"
+          - type: input
+            id: search-bar
+            span: 3               # proportional sizing (3x the space of span:1)
+            props:
+              placeholder: "Search products..."
+      right:
+        direction: horizontal
+        gap: 8
+        components:
+          - type: button
+            id: search-btn
+            props:
+              text: "Search"
+              variant: primary
+            style:
+              background: "$style.accent-color"
+              border-radius: "$style.border-radius"
+          - type: avatar
+            props:
+              initials: "$user.avatar"   # $reference — resolved from provider data
+
+  # ── Category Tabs ──
+  categories:
+    components:
+      - type: tabs
+        id: category-tabs
+        props:
+          tabs:
+            - All
+            - Electronics
+            - Clothing
+            - Home
+
+  # ── Product List (data-source + template) ──
+  # Generates one component per item from the provider data.
+  product-list:
+    direction: vertical
+    gap: 8
+    data-source: products         # provider data to iterate over
+    template:                     # template for each item
+      type: listItem
+      props:
+        label: "$item.name"       # $item.field — interpolated per data item
+        rightContentText: "$item.price"
+        supportText: "$item.category"
+
+  # ── Grid Layout Example ──
+  featured:
+    direction: grid               # grid layout
+    columns: 3                    # 3 columns
+    gap: 16
+    components:
+      - type: banner
+        props:
+          text: "Featured Product 1"
+        colSpan: 2                # spans 2 grid columns
+      - type: banner
+        props:
+          text: "Featured Product 2"
+      - type: banner
+        props:
+          text: "Featured Product 3"
+
+  # ── Sidebar (responsive) ──
+  sidebar:
+    collapse-below: 768           # hides when container width < 768px
+    components:
+      - type: tabs
+        props:
+          tabs:
+            - Home
+            - Orders
+            - Settings
+
+  # ── Modal Layer ──
+  confirm-dialog:
+    layer: 1                      # renders above layer 0 (position: absolute)
+    style:
+      background: "rgba(0,0,0,0.5)"
+      padding: 24
+    components:
+      - type: banner
+        id: confirm-message
+        props:
+          text: "Are you sure?"
+      - type: button
+        id: confirm-yes
+        props:
+          text: "Yes"
+      - type: button
+        id: confirm-no
+        props:
+          text: "Cancel"
+
+# ── Interactions ──
+# Wire component events to built-in actions or handler functions.
+interactions:
+
+  # Call a handler function — handler receives HandlerContext with eventArgs
+  - on: search-btn.click
+    handler: handleSearch
+
+  # Handler with event arg forwarding — Tabs onchange passes (index, label)
+  - on: category-tabs.change
+    handler: handleCategoryChange
+
+  # Built-in action: navigate to another template
+  - on: logo.click
+    do: navigate
+    to: home.yaml
+
+  # Built-in action: show a region
+  - on: confirm-yes.click
+    do: hide
+    target: confirm-dialog
+
+  # Built-in action: show notification toast
+  - on: confirm-no.click
+    do: notify
+    message: "Cancelled"
