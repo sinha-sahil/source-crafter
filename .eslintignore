@@ -4,5 +4,7 @@ build/
 examples/
 coverage/
 *.config.js
+*.config.ts
 *.json
 *.md
+tests/
