@@ -8,13 +8,12 @@ All packages needed to run Orrery across platforms.
 
 | # | Package | Language | Required | Purpose |
 |---|---------|----------|----------|---------|
-| 1 | `@orrery/server` | Rust + NAPI-RS | Yes (backend) | YAML parse, temple render, view tree build, serialize |
+| 1 | `@orrery/server` | Rust + NAPI-RS | Yes (backend) | YAML parse, temple render, component → HTML rewrite, view tree build, serialize |
 | 2 | `temple-dsl` | Rust (dependency) | Yes (internal) | Expression engine, blob compile/render |
-| 3 | `@orrery/extract-components` | CLI (Node) | Optional | Extract HTML templates from React/Vue/Svelte components |
-| 4 | `@orrery/web` | TypeScript | Yes (web) | innerHTML, events, virtual scroll, built-in actions |
-| 5 | `@orrery/ios` | Swift | Yes (iOS) | FlatBuffers/JSON decode, UIKit rendering, built-in actions |
-| 6 | `@orrery/android` | Kotlin | Yes (Android) | FlatBuffers/JSON decode, Compose rendering, built-in actions |
-| 7 | `temple-dsl` (WASM) | Rust -> WASM | Optional | Web editor intellisense, format-on-save |
+| 3 | `@orrery/web` | TypeScript | Yes (web) | innerHTML, events, virtual scroll, built-in actions |
+| 4 | `@orrery/ios` | Swift | Yes (iOS) | FlatBuffers/JSON decode, UIKit rendering, built-in actions |
+| 5 | `@orrery/android` | Kotlin | Yes (Android) | FlatBuffers/JSON decode, Compose rendering, built-in actions |
+| 6 | `temple-dsl` (WASM) | Rust -> WASM | Optional | Web editor intellisense, format-on-save |
 
 ## What the Developer Installs
 
@@ -49,11 +48,6 @@ orrery-server = "1.0"
 implementation("com.orrery:android:1.0.0")
 ```
 1 package. Includes renderer + built-in actions.
-
-**Extract components from existing React/Vue/Svelte (one-time, build step):**
-```
-npx @orrery/extract-components ./src/components --framework react --output ./templates/
-```
 
 ## Crate Structure
 
@@ -100,14 +94,6 @@ source-crafter/
 │   │       ├── actions.ts     # Built-in action handlers (show/hide/toggle/navigate/notify)
 │   │       ├── diff.ts        # Apply server diffs to existing DOM
 │   │       └── cache.ts       # Local cache (ServiceWorker / localStorage)
-│   │
-│   └── extract-components/   # @orrery/extract-components (CLI)
-│       ├── package.json
-│       └── src/
-│           ├── index.ts       # CLI entry point
-│           ├── react.ts       # renderToStaticMarkup → temple template
-│           ├── vue.ts         # SSR render → temple template
-│           └── svelte.ts      # SSR render → temple template
 │
 ├── types/
 │   └── spec.yaml             # Single source of truth for types (type-crafter)

@@ -144,46 +144,46 @@ OrreryAdapter.register("product-card") { props ->
 
 ---
 
-## Extracting Components From Existing Libraries
+## Using Existing Component Libraries
 
-If you have an existing React, Vue, or Svelte component library, the CLI tool extracts HTML templates from them.
+If you have components in React, Vue, Svelte, or any framework — the engine rewrites them to HTML templates internally. The user references the component library in YAML, and the server handles the conversion.
 
-```bash
-npx @orrery/extract-components ./src/components --framework react --output ./templates/
+```yaml
+# User references their component library
+components:
+  from: my-design-system        # component library name
+
+regions:
+  main:
+    components:
+      - type: product-card      # component from the library
+        props:
+          name: "$product.name"
+          price: "$product.price"
 ```
 
-What it does:
-1. Import each component
-2. Render with sample props using the framework's SSR (renderToStaticMarkup for React, etc.)
-3. Replace prop values with `{{ input.propName }}` placeholders
-4. Output `.temple` template files
-5. Compile to blobs
+The developer registers the component library with the server. The server knows how to render each component to HTML — no framework runtime shipped to the client.
 
-**Run once at build time. Not shipped to the client.**
-
-### Example: React component extraction
-
-Input (`ProductCard.tsx`):
-```jsx
-function ProductCard({ name, price, image }) {
-  return (
-    <div className="card">
-      <img src={image} />
-      <h3>{name}</h3>
-      <span className="price">{price}</span>
-    </div>
-  )
-}
+```rust
+server.register_component_library("my-design-system", ComponentLibrary {
+    components: vec![
+        ComponentDef {
+            name: "product-card",
+            template: r#"
+                <div class="card">
+                    <img src="{{ input.image }}" />
+                    <h3>{{ input.name }}</h3>
+                    <span class="price">{{ input.price }}</span>
+                </div>
+            "#,
+            style: ".card { border: 1px solid #30363d; border-radius: 8px; padding: 16px; }",
+        },
+        // ... more components
+    ],
+});
 ```
 
-Output (`product-card.temple`):
-```
-{
-  "html": "<div class=\"card\"><img src=\"{{ input.image }}\" /><h3>{{ input.name }}</h3><span class=\"price\">{{ input.price }}</span></div>"
-}
-```
-
-The extracted template produces identical HTML to the original React component, without React runtime.
+The HTML templates are compiled to temple blobs at registration time. At request time, props are injected and HTML is rendered in microseconds. No React, no Vue, no Svelte — just HTML.
 
 ---
 
