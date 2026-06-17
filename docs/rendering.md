@@ -1,37 +1,37 @@
 # Rendering
 
-How the view tree becomes native UI on each platform.
+How pre-rendered output becomes native UI on each platform.
 
 ---
 
 ## The Pipeline
 
 ```
-Server output
+Pre-rendered files (stored in S3/R2/Redis/filesystem via StorageAdapter)
       │
-      ├── Web: HTML string
+      ├── Web: .html + .css + .js files
       │         │
       │         v
-      │    innerHTML → event binding → virtual scroll
+      │    CDN → browser fetch → innerHTML → event binding → virtual scroll
       │
       ├── iOS: FlatBuffers (prod) / JSON (debug)
       │         │
       │         v
-      │    Decode → walk tree → UIKit view hierarchy → UICollectionView for lists
+      │    CDN → decode → walk tree → UIKit view hierarchy → UICollectionView for lists
       │
       └── Android: FlatBuffers (prod) / JSON (debug)
                 │
                 v
-           Decode → walk tree → Compose composables → LazyColumn for lists
+           CDN → decode → walk tree → Compose composables → LazyColumn for lists
 ```
 
 ---
 
 ## Web Rendering
 
-### Server Sends HTML
+### Pre-Rendered Files
 
-The server renders the complete page as an HTML string. Layout regions become `<div>` elements with flex/grid styles. Components become their HTML templates with resolved props.
+The engine pre-renders each page at compile time (not request time) and stores the output via StorageAdapter. Layout regions become `<div>` elements with flex/grid styles. Components become their HTML templates with resolved props.
 
 ```html
 <!-- Server output for a header region -->
@@ -46,25 +46,67 @@ The server renders the complete page as an HTML string. Layout regions become `<
 </div>
 ```
 
-### Client Mounts
+### Browser Loads
+
+The browser loads a static shell (`index.html`) that mounts the Orrery runtime:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="https://cdn/assets/components.css" />
+  <link rel="stylesheet" href="https://cdn/assets/theme.css" />
+  <script src="https://cdn/assets/orrery-runtime.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+  <script>orrery.mount('#app', { cdn: 'https://cdn', startPage: 'home' })</script>
+</body>
+</html>
+```
+
+The runtime (`@orrery/web`, ~5-8KB gzipped) does:
 
 ```typescript
 // @orrery/web internals (simplified)
-function mount(container, html, interactions) {
-  // 1. Inject HTML — browser parses at 152 MB/s
+async function mount(selector, config) {
+  const container = document.querySelector(selector)
+
+  // 1. Fetch route manifest from CDN
+  const manifest = await fetch(`${config.cdn}/manifest.json`).then(r => r.json())
+  sessionStorage.setItem('orrery:manifest', JSON.stringify(manifest))
+
+  // 2. Fetch pre-rendered page from CDN
+  const pageUrl = `${config.cdn}${manifest.pages[config.startPage]}`
+  const [html, interactions] = await Promise.all([
+    fetch(pageUrl).then(r => r.text()),
+    fetch(pageUrl.replace('index.html', 'interactions.js')).then(r => r.text())
+  ])
+
+  // 3. Inject HTML — browser parses at 152 MB/s
   container.innerHTML = html
 
-  // 2. Bind events from interaction definitions
+  // 4. Bind events from interaction definitions
   for (const interaction of interactions) {
     const [id, event] = interaction.on.split('.')
     const el = container.querySelector(`[data-id="${id}"]`)
     el.addEventListener(event, (e) => handleInteraction(interaction, e))
   }
 
-  // 3. Initialize virtual scroll for data-source regions with many items
+  // 5. Initialize virtual scroll for data-source regions with many items
   for (const region of findDataSourceRegions(container)) {
     if (region.itemCount > 200) {
       initVirtualScroll(region)
+    }
+  }
+
+  // 6. Prefetch pages linked from this page
+  for (const i of interactions) {
+    if (i.do === 'navigate' && manifest.pages[i.to]) {
+      const link = document.createElement('link')
+      link.rel = 'prefetch'
+      link.href = `${config.cdn}${manifest.pages[i.to]}`
+      document.head.appendChild(link)
     }
   }
 }

@@ -1,76 +1,142 @@
 # Orrery Architecture
 
-YAML-driven cross-platform UI engine. Server-side rendering, thin native clients.
+YAML-driven cross-platform UI engine. Pre-rendered output, thin native clients.
 
 ---
 
 ## Overview
 
 ```
-Developer writes YAML + registers handlers + registers components
+Developer writes YAML + references component libraries via `use:` + registers handlers
                     |
                     v
-        ┌───────────────────────┐
-        │    @orrery/server     │
-        │       (Rust)          │
-        │                       │
-        │  1. Parse YAML        │
-        │  2. Load temple blobs │
-        │  3. Fetch provider    │
-        │     data              │
-        │  4. Evaluate compute  │
-        │  5. Evaluate          │
-        │     conditions        │
-        │  6. Resolve all       │
-        │     $references       │
-        │  7. Build view tree   │
-        │  8. Serialize output  │
-        └──────────┬────────────┘
+        ┌───────────────────────────────┐
+        │       @orrery/server          │
+        │    (Rust + Node.js NAPI-RS)   │
+        │                               │
+        │  COMPILE TIME (once):         │
+        │  1. Resolve `use:` refs       │
+        │     (components, icons,       │
+        │      theme, fonts, layout)    │
+        │  2. SSR extract component     │
+        │     HTML from frameworks      │
+        │  3. Compile to temple blobs   │
+        │                               │
+        │  PRE-RENDER (on data change): │
+        │  4. Parse YAML                │
+        │  5. Fetch provider data       │
+        │  6. Evaluate compute section  │
+        │  7. Evaluate conditions       │
+        │  8. Resolve all $references   │
+        │  9. Build view tree           │
+        │ 10. Render to .html/.css/.js  │
+        │     (web) or FlatBuffers      │
+        │     (mobile)                  │
+        └──────────┬────────────────────┘
                    │
-            Network / Cache
+        StorageAdapter (consumer's choice)
+        S3 / Redis / R2 / filesystem
+                   │
+            CDN / Storage
                    │
        ┌───────────┼───────────┐
        v           v           v
   @orrery/web  @orrery/ios  @orrery/android
   (TypeScript)  (Swift)      (Kotlin)
        │           │           │
-   innerHTML    UIKit       Compose
-   + events     views       composables
-   + virtual    + UIColV    + LazyColumn
+   Fetch .html  Fetch FB     Fetch FB
+   innerHTML    UIKit        Compose
+   + events     views        composables
+   + virtual    + UIColV     + LazyColumn
      scroll
 ```
 
 ## What the Server Does
 
-The server is the brain. It handles all logic:
+The server handles all logic at **compile/pre-render time** — not at request time:
 
-- **YAML parsing** — reads page template, style tokens, data providers, compute section, regions, interactions
-- **Temple rendering** — resolves `$references`, evaluates conditions, computes derived values using pre-compiled temple blobs
-- **View tree construction** — builds the component tree with integer type IDs and fully resolved props
-- **Serialization** — outputs HTML (web), FlatBuffers (mobile prod), or JSON (mobile debug)
+- **Resolve `use:` references** — fetch component libraries, icon sets, themes, fonts, layouts from URLs/npm/local paths
+- **SSR extract components** — call framework's "give me HTML string" function (React `renderToStaticMarkup`, Svelte `.render()`, Vue `renderToString`) to get HTML templates from framework components
+- **Temple compilation** — compile HTML templates, compute expressions, conditions to CBOR blobs
+- **Pre-rendering** — execute blobs with provider data → produce final .html, .css, .js files per page
+- **Storage** — store pre-rendered files via consumer-configured StorageAdapter
+- **Manifest generation** — generate route manifest (page → URL mapping) for client-side navigation
+- **Handler execution** — process handler calls when user interacts (the only runtime server responsibility)
 
-The server knows nothing about platforms. It outputs a platform-agnostic description. The format differs:
+The server outputs platform-specific files:
 
-| Platform | Output format | Why |
-|----------|--------------|-----|
-| Web | HTML string | Browser parses HTML natively at 152 MB/s |
-| iOS (prod) | FlatBuffers | Zero-copy decode, < 1ms for 500KB |
-| iOS (debug) | JSON | Human-readable for debugging |
-| Android (prod) | FlatBuffers | Zero-copy decode, < 1ms for 500KB |
-| Android (debug) | JSON | Human-readable for debugging |
+| Platform | Output | Where Stored |
+|----------|--------|-------------|
+| Web | `.html` + `.css` + `.js` | StorageAdapter → CDN |
+| iOS (prod) | FlatBuffers binary | StorageAdapter → CDN |
+| iOS (debug) | JSON | StorageAdapter → CDN |
+| Android (prod) | FlatBuffers binary | StorageAdapter → CDN |
+| Android (debug) | JSON | StorageAdapter → CDN |
 
 ## What the Client Does
 
-The client is thin. It handles only rendering and interaction capture:
+The client is thin. It only handles rendering and interaction capture:
 
-- **Receive output** from server (HTML or FlatBuffers/JSON)
-- **Map to native views** — type ID array lookup, not string HashMap
-- **Attach event listeners** — for interactions defined in the YAML
+- **Fetch pre-rendered files** from CDN (no server round-trip for page loads)
+- **Web:** `innerHTML` for HTML, CSS loaded via `<link>`
+- **Mobile:** FlatBuffers zero-copy decode → native view construction
+- **Attach event listeners** — from interactions.js definitions
 - **Execute built-in actions** — show, hide, toggle, navigate, notify (no server round-trip)
+- **Navigate via manifest** — client knows all page URLs, fetches next page directly from CDN
+- **Prefetch linked pages** — `<link rel="prefetch">` for pages reachable from current page
 - **Forward handler calls** — send event + args to server, apply returned diff
 - **Virtual scroll** — for lists exceeding threshold (200 web, 100 mobile)
 
-The client never evaluates conditions, resolves references, or computes values. That's all server-side.
+The client never evaluates conditions, resolves references, or computes values. That's all done at pre-render time.
+
+## Storage Adapter
+
+The consumer decides where pre-rendered files are stored:
+
+```rust
+// Trait the consumer implements (or uses a built-in)
+trait StorageAdapter {
+    async fn store(&self, key: &str, data: &[u8], content_type: &str) -> Result<String>;
+    async fn fetch(&self, key: &str) -> Result<Vec<u8>>;
+    async fn delete(&self, key: &str) -> Result<()>;
+    async fn exists(&self, key: &str) -> bool;
+}
+```
+
+```typescript
+// Configuration
+const server = createOrreryServer({
+  storage: new S3Adapter({ bucket: "my-app", region: "ap-south-1" }),  // production
+  // storage: new FileSystemAdapter({ path: "./cache" }),              // development
+  // storage: new RedisAdapter({ url: "redis://localhost:6379" }),     // alternative
+  pages: "./pages",
+  components: "./components"
+})
+```
+
+Orrery ships `FileSystemAdapter` and `MemoryAdapter`. Consumer brings their own for production.
+
+## Route Manifest
+
+The manifest maps page names to CDN URLs. Stored in same storage, fetched by client on first load:
+
+```json
+{
+  "version": "v42",
+  "pages": {
+    "home": "/pages/home/index.html",
+    "products": "/pages/products/index.html",
+    "cart": "/pages/cart/index.html"
+  },
+  "assets": {
+    "components": "/assets/components.css",
+    "theme": "/assets/theme.css",
+    "runtime": "/assets/orrery-runtime.js"
+  }
+}
+```
+
+Client stores this in `sessionStorage` + JS memory. Navigation uses manifest for instant page lookup — no server round-trip.
 
 ## Integer Type IDs
 
@@ -109,50 +175,42 @@ Temple provides:
 - `when` guards for conditional compute
 - Collection operations (sum, filter, map, fold, any, all)
 
-Temple is optional. The consumer can choose to register raw handler functions server-side instead of using YAML handler declarations.
+Temple is optional. The consumer can register raw handler functions server-side instead.
 
-## Format Negotiation
+## Format Negotiation (Mobile Only)
 
-The client sends an `Accept` header. The server responds accordingly:
+Mobile adapters negotiate format via `Accept` header:
 
 ```
-Accept: text/html                    →  HTML string (web)
-Accept: application/x-flatbuffers    →  FlatBuffers binary (mobile prod)
-Accept: application/json             →  JSON (mobile debug)
+Accept: application/x-flatbuffers    →  FlatBuffers binary (prod)
+Accept: application/json             →  JSON (debug)
 ```
 
-Server config can override:
-
-```rust
-OrreryServer::new()
-    .format(Format::Auto)           // FlatBuffers in prod, JSON in debug
-    .format(Format::FlatBuffers)    // always binary
-    .format(Format::Json)           // always JSON
-```
+Web always receives `.html` files — no negotiation needed.
 
 Per-request override via query param: `?format=json` for debugging.
 
 ## Diff Updates
 
-When data changes (handler triggers a refresh), the server doesn't re-send the entire page:
+When data changes (handler triggers a refresh), the server doesn't re-render the entire page:
 
 ```
 1. Client sends: refresh("cart")
 2. Server re-fetches cart provider data
-3. Server re-renders only the cart-dependent regions
+3. Server re-renders only cart-dependent regions (using stored blobs)
 4. Server diffs old view tree vs new view tree
 5. Server sends only changed nodes
 6. Client patches the existing UI
+7. Server stores updated pre-rendered files for next visitor
 ```
 
-This minimizes network transfer and avoids full re-renders on every interaction.
+## No PR For UI Changes
 
-## Caching
+Pre-rendered files are generated artifacts in storage, not source code:
 
-View trees are cached locally on the client:
+```
+YAML change → engine re-renders → stores new files → CDN serves new version
+(seconds, no PR, no deploy, no CI)
+```
 
-- First load: server response cached to disk (keyed by YAML filename + data version hash)
-- Subsequent loads: render from cache immediately, check server in background (stale-while-revalidate)
-- Cache invalidation: server sends version header, client compares
-
-With caching, the network overhead drops to 0ms for repeat visits.
+Only handler registration (backend logic) and new component definitions need code changes.

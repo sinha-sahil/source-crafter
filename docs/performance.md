@@ -89,20 +89,33 @@ Source: Krausest JS Framework Benchmark, Chrome 130.
 
 ## Optimization Strategies
 
-### Priority 1: Cache (eliminates network on repeat visits)
+### Priority 0: Pre-Rendering + CDN (eliminates server compute at request time)
+
+Pages are pre-rendered at compile time and stored via StorageAdapter (S3, R2, Redis, filesystem). The browser fetches static files directly from CDN.
 
 ```
-First visit:  Server → Client (50-200ms network)
-              Client caches view tree locally
+Without pre-rendering:  Browser → Server (compute + render) → Browser
+                        50-200ms network + 5-30ms compute
 
-Repeat visit: Cache → Client (0ms network)
-              Background: check server for updates
-              If changed: apply diff
+With pre-rendering:     Browser → CDN (static file) → Browser
+                        10-30ms CDN latency, 0ms compute
 ```
 
-Stale-while-revalidate. Show cached UI instantly, verify in background.
+**Impact:** Eliminates all server-side compute at request time. Pages load from CDN like static files.
 
-**Impact:** Eliminates 50-200ms network latency on repeat visits. First paint drops to parse + map only.
+### Priority 1: Route Manifest + Prefetch (eliminates navigation latency)
+
+On first page load, the browser receives the route manifest (page → CDN URL mapping). For linked pages, `<link rel="prefetch">` fetches them in background.
+
+```
+Without manifest:  Click "Products" → ask server → get URL → fetch page
+With manifest:     Click "Products" → already know URL → fetch from CDN
+With prefetch:     Click "Products" → already in browser cache → 0ms
+```
+
+**Impact:** Navigation between pages feels instant. Prefetched pages load in 0ms.
+
+### Priority 2: FlatBuffers (eliminates parse overhead on mobile)
 
 ### Priority 2: FlatBuffers (eliminates parse overhead on mobile)
 

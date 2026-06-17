@@ -8,7 +8,7 @@ All packages needed to run Orrery across platforms.
 
 | # | Package | Language | Required | Purpose |
 |---|---------|----------|----------|---------|
-| 1 | `@orrery/server` | Rust + NAPI-RS | Yes (backend) | YAML parse, temple render, component → HTML rewrite, view tree build, serialize |
+| 1 | `@orrery/server` | Rust + NAPI-RS | Yes (backend) | YAML parse, `use:` resolution, SSR component extraction, temple render, pre-render, StorageAdapter |
 | 2 | `temple-dsl` | Rust (dependency) | Yes (internal) | Expression engine, blob compile/render |
 | 3 | `@orrery/web` | TypeScript | Yes (web) | innerHTML, events, virtual scroll, built-in actions |
 | 4 | `@orrery/ios` | Swift | Yes (iOS) | FlatBuffers/JSON decode, UIKit rendering, built-in actions |
@@ -28,6 +28,13 @@ npm install @orrery/web
 npm install @orrery/server
 ```
 1 package. Rust binary via NAPI-RS. Includes temple-dsl internally.
+
+If using framework component libraries, install the framework as a peer dependency (SSR extraction at compile time only — never shipped to browser):
+```
+npm install react react-dom    # if using React component libraries
+npm install svelte             # if using Svelte component libraries
+npm install vue                # if using Vue component libraries
+```
 
 **Backend (pure Rust):**
 ```toml
@@ -57,11 +64,13 @@ source-crafter/
 │   ├── engine-core/          # Core engine: YAML parsing, view tree, serialization
 │   │   ├── Cargo.toml        # depends on temple-dsl, serde, serde_yaml, flatbuffers
 │   │   └── src/
-│   │       ├── lib.rs         # Public API: parse, render, serialize
-│   │       ├── parser/        # YAML → PageTree
+│   │       ├── lib.rs         # Public API: parse, render, serialize, pre-render
+│   │       ├── parser/        # YAML → PageTree (including `use:` resolution)
 │   │       ├── resolver/      # $reference resolution, condition evaluation
 │   │       ├── tree/          # View tree construction, integer type ID assignment
 │   │       ├── serializer/    # HTML, FlatBuffers, JSON output
+│   │       ├── storage/       # StorageAdapter trait + built-in adapters (filesystem, memory)
+│   │       ├── manifest/      # Route manifest generation
 │   │       └── generated/     # Types from type-crafter (spec.yaml)
 │   │
 │   ├── temple-bridge/        # Bridge between engine-core and temple-dsl
@@ -83,7 +92,8 @@ source-crafter/
 │   ├── server/               # @orrery/server (Node.js NAPI-RS bindings)
 │   │   ├── package.json
 │   │   └── src/
-│   │       └── lib.rs        # napi-rs exports: createServer, render, registerHandler
+│   │       └── lib.rs        # napi-rs exports: createServer, render, registerHandler, preRender
+│   │                          # SSR extraction: uses React/Svelte/Vue SSR as optional peer deps
 │   │
 │   ├── web/                  # @orrery/web (TypeScript client)
 │   │   ├── package.json
@@ -92,8 +102,10 @@ source-crafter/
 │   │       ├── renderer.ts    # innerHTML, event binding
 │   │       ├── scroll.ts      # Virtual scroll implementation
 │   │       ├── actions.ts     # Built-in action handlers (show/hide/toggle/navigate/notify)
+│   │       ├── navigate.ts    # Manifest-based navigation (fetch from CDN, no server round-trip)
+│   │       ├── prefetch.ts    # Prefetch linked pages via <link rel="prefetch">
 │   │       ├── diff.ts        # Apply server diffs to existing DOM
-│   │       └── cache.ts       # Local cache (ServiceWorker / localStorage)
+│   │       └── manifest.ts    # Route manifest loader (sessionStorage + memory)
 │
 ├── types/
 │   └── spec.yaml             # Single source of truth for types (type-crafter)

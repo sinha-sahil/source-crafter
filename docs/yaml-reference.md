@@ -11,6 +11,13 @@ A YAML template has these top-level sections:
 ```yaml
 page: page-name              # Page identifier
 
+use:                          # External references (optional)
+  components: "@shadcn/ui"
+  icons: "lucide"
+  theme: "https://cdn.myapp.com/themes/dark.yaml"
+  fonts:
+    - "Inter"
+
 style:                        # Global style tokens
   primary: "#238636"
   accent: "#58a6ff"
@@ -38,6 +45,64 @@ interactions:                 # Event bindings
 ```
 
 All sections are optional except `page` and `regions`.
+
+---
+
+## Use Section
+
+Declare external resources for the page. The engine resolves and compiles them at deploy time.
+
+```yaml
+use:
+  components: "@shadcn/ui"                           # npm package
+  icons: "lucide"                                     # icon library
+  theme: "https://cdn.myapp.com/themes/dark.yaml"   # theme tokens URL
+  layout: "dashboard"                                 # pre-built layout
+  fonts:
+    - "Inter"
+    - "JetBrains Mono"
+```
+
+### Reference formats:
+
+```yaml
+# npm package name
+use:
+  components: "@shadcn/ui"
+
+# URL
+use:
+  components: "https://unpkg.com/@my-lib/components"
+
+# GitHub repo
+use:
+  components: "github:user/repo"
+
+# Local path
+use:
+  components: "./my-components.yaml"
+
+# Multiple sources (last wins on name conflict)
+use:
+  components:
+    - "@shadcn/ui"
+    - "./overrides"
+
+# Cherry-pick
+use:
+  components:
+    from: "@shadcn/ui"
+    pick: [button, card, dialog]
+
+# Inline HTML templates
+use:
+  components:
+    product-card:
+      template: '<div class="card"><h3>{{ input.name }}</h3></div>'
+      style: '.card { border: 1px solid #30363d; }'
+```
+
+See `how-it-works.md` for full details on how the engine resolves and extracts components.
 
 ---
 

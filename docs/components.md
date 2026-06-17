@@ -1,32 +1,54 @@
 # Component System
 
-How components are defined, registered, referenced, and rendered.
+How components are defined, referenced, and rendered.
 
 ---
 
 ## How Components Work
 
-A component in YAML is just a type name and props:
+The YAML author references components from a library declared in `use:`:
 
 ```yaml
-- type: product-card
-  props:
-    name: "$product.name"
-    price: "$product.price"
-    image: "$product.image"
+page: shop
+
+use:
+  components: "@shadcn/ui"         # component library
+  icons: "lucide"                   # icon library
+
+regions:
+  main:
+    components:
+      - type: button                # from @shadcn/ui
+        props:
+          text: "Add to Cart"
+          variant: "primary"
+      - type: product-card          # from @shadcn/ui
+        props:
+          name: "$product.name"
+          price: "$product.price"
+      - type: icon                  # from lucide
+        props:
+          name: "shopping-cart"
 ```
 
-The server resolves `$references` and outputs the component with its integer type ID and final prop values. The client adapter looks up the type ID and renders the native view.
+At compile time, the engine:
+1. Fetches the component library
+2. Extracts HTML templates via SSR (see `how-it-works.md`)
+3. Compiles templates to temple blobs
+4. At pre-render time, executes blobs with resolved props → HTML
 
 ```
-YAML author writes:  type: "product-card"
+YAML author writes:  use: components: "@shadcn/ui"
+                     type: "product-card"
                      props: { name: "$product.name" }
                            │
-Server resolves:     type_id: 4
-                     props: { name: "Wireless Headphones" }
+Engine at compile:   SSR extract → HTML template → temple blob
                            │
-Client adapter:      constructors[4](props)
-                     → native view with "Wireless Headphones"
+Engine at pre-render: blob + { name: "Wireless Headphones" }
+                           │
+Output .html:        <div class="card"><h3>Wireless Headphones</h3>...</div>
+                           │
+Browser:             innerHTML → user sees the card
 ```
 
 ## Two Kinds of Components
