@@ -382,3 +382,11 @@ The server and client must agree on type ID assignments.
 The client adapter uses this map to build its constructor array in the correct order. After the handshake, all communication uses integer IDs only.
 
 The type map is versioned. If it changes (new component types added), the server bumps the version and the client rebuilds its array.
+
+---
+
+## Full Adapter Code
+
+For complete iOS and Android adapter implementation (navigation, interaction binding, action execution, handler calls, diff application, OTA updates), see `platform-adapters.md`.
+
+For OTA update strategies and App Store compliance, see `ota-updates.md`.
