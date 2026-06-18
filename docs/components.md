@@ -168,23 +168,74 @@ OrreryAdapter.register("product-card") { props ->
 
 ## Using Existing Component Libraries
 
-If you have components in React, Vue, Svelte, or any framework — the engine rewrites them to HTML templates internally. The user references the component library in YAML, and the server handles the conversion.
+Reference any component library in YAML. The server handles everything — downloading, detecting the framework, extracting HTML templates:
 
 ```yaml
-# User references their component library
-components:
-  from: my-design-system        # component library name
+page: shop
+
+use:
+  components: "@shadcn/ui"      # npm package name
 
 regions:
   main:
     components:
-      - type: product-card      # component from the library
+      - type: product-card      # from the library
         props:
           name: "$product.name"
           price: "$product.price"
 ```
 
-The developer registers the component library with the server. The server knows how to render each component to HTML — no framework runtime shipped to the client.
+The server auto-detects which extraction tier to use:
+
+### Three Tiers of Extraction
+
+| Tier | What the Library Ships | What Orrery Does | Examples |
+|------|----------------------|-----------------|----------|
+| **1. HTML Templates** | `.html` files, template strings | Uses directly — zero extraction | Custom Orrery-native libs |
+| **2. Web Components** | Custom element JS (`<sui-card>`) | Template = `<sui-card text="{{ input.text }}">`, ships WC bundle to browser | `@juspay/svelte-ui-components` (Web Component builds) |
+| **3. Framework SSR** | `.jsx`, `.svelte`, `.vue` source | esbuild bundles framework + component → QuickJS executes SSR → HTML string → template | Most npm libraries (`@shadcn/ui`, `@radix/ui`, etc.) |
+
+### How Tier 3 Works (Framework SSR)
+
+The server is pure Rust. It embeds QuickJS (lightweight JS runtime) and esbuild (JS bundler) to extract HTML:
+
+```
+1. Download component library from npm registry (HTTP, no npm CLI)
+2. Read package.json → detect framework (React/Svelte/Vue)
+3. Download the framework package from npm registry
+4. Generate entry.js that imports framework SSR + components
+5. esbuild bundles entry.js + framework + components → single bundle.js
+6. QuickJS executes bundle.js → calls SSR function with marker props → HTML string
+7. Replace markers with temple placeholders → HTML template
+8. Compile template → temple blob (pure Rust)
+9. Cache everything — next startup skips extraction entirely
+```
+
+See `how-it-works.md` for the detailed step-by-step with code examples.
+
+### Real-World Example: @juspay/svelte-ui-components
+
+This library ships 67 raw `.svelte` files (Svelte 5 runes syntax, NOT compiled JS). It also has Web Component wrappers (`<sui-card>`, `<sui-button>`).
+
+Orrery can use it two ways:
+
+```yaml
+# Option A: Web Component path (Tier 2, simpler)
+use:
+  components:
+    from: "@juspay/svelte-ui-components"
+    mode: "web-components"
+
+# Option B: SSR extraction path (Tier 3, general)
+use:
+  components: "@juspay/svelte-ui-components"
+  # Server auto-detects Svelte, downloads svelte compiler,
+  # compiles .svelte → JS → SSR render → HTML templates
+```
+
+### Manual Registration (Optional)
+
+Developers can also register component templates directly in Rust:
 
 ```rust
 server.register_component_library("my-design-system", ComponentLibrary {
@@ -200,7 +251,6 @@ server.register_component_library("my-design-system", ComponentLibrary {
             "#,
             style: ".card { border: 1px solid #30363d; border-radius: 8px; padding: 16px; }",
         },
-        // ... more components
     ],
 });
 ```

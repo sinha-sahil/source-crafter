@@ -12,7 +12,8 @@ Developer writes YAML + references component libraries via `use:` + registers ha
                     v
         ┌───────────────────────────────┐
         │       @orrery/server          │
-        │    (Rust + Node.js NAPI-RS)   │
+        │  (Rust + embedded QuickJS     │
+        │   + esbuild for SSR)          │
         │                               │
         │  COMPILE TIME (once):         │
         │  1. Resolve `use:` refs       │
@@ -53,15 +54,27 @@ Developer writes YAML + references component libraries via `use:` + registers ha
 
 ## What the Server Does
 
-The server handles all logic at **compile/pre-render time** — not at request time:
+The server is **pure Rust** (~25-30MB binary). It embeds QuickJS (~300KB) for JS execution and esbuild (~8MB) for bundling. No Node.js. No npm CLI.
 
-- **Resolve `use:` references** — fetch component libraries, icon sets, themes, fonts, layouts from URLs/npm/local paths
-- **SSR extract components** — call framework's "give me HTML string" function (React `renderToStaticMarkup`, Svelte `.render()`, Vue `renderToString`) to get HTML templates from framework components
+All logic runs at **compile/pre-render time** — not at request time:
+
+- **Resolve `use:` references** — download component libraries, icon sets, themes, fonts, layouts via HTTP from npm registry, URLs, or local paths
+- **SSR extract components** — three tiers: HTML templates (direct), Web Components (custom element tags), Framework SSR (esbuild bundles framework + components → QuickJS executes → HTML string)
 - **Temple compilation** — compile HTML templates, compute expressions, conditions to CBOR blobs
 - **Pre-rendering** — execute blobs with provider data → produce final .html, .css, .js files per page
 - **Storage** — store pre-rendered files via consumer-configured StorageAdapter
-- **Manifest generation** — generate route manifest (page → URL mapping) for client-side navigation
+- **Manifest generation** — generate versioned route manifest (page → CDN URL mapping)
 - **Handler execution** — process handler calls when user interacts (the only runtime server responsibility)
+
+### Component Extraction Tiers
+
+| Tier | Input | Extraction | Cost |
+|------|-------|-----------|------|
+| **1. HTML Templates** | `.html` files, inline templates | None — use directly | 0ms |
+| **2. Web Components** | Custom element JS files (`<sui-card>`) | Load JS bundle, template = `<tag-name>` | ~10ms |
+| **3. Framework SSR** | `.jsx`, `.svelte`, `.vue` source files | esbuild bundle → QuickJS execute → HTML | ~3-8s first run, ~5ms cached |
+
+Extraction results are cached per library version. Changing YAML does NOT re-extract components — only changing the component library version triggers re-extraction.
 
 The server outputs platform-specific files:
 

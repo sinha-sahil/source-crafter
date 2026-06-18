@@ -110,9 +110,58 @@ SSR stands for Server-Side Rendering. Every UI framework (React, Svelte, Vue) ha
 | Svelte | `Component.render(props)` | Component in → `{ html: string }` out |
 | Vue | `renderToString(app)` | Component in → HTML string out |
 
-These are just function calls on the server (Node.js). No browser involved.
+The Orrery server is **pure Rust**. It doesn't run Node.js. Instead, it embeds a lightweight JavaScript runtime (QuickJS via the `rquickjs` crate) and uses esbuild to bundle framework code. This happens at compile time only — never at request time.
 
-### Step-By-Step: React Component
+### Three Tiers of Component Libraries
+
+Not all component libraries need the same extraction approach:
+
+| Tier | What It Ships | Extraction | Examples |
+|------|--------------|-----------|----------|
+| **Tier 1: HTML Templates** | `.html` files or template strings | Zero extraction needed — use directly | Custom components, Orrery-native libs |
+| **Tier 2: Web Components** | Custom element JS files | Load JS bundle, use `<tag-name>` in template | `@juspay/svelte-ui-components` (ships `<sui-card>`, `<sui-button>`) |
+| **Tier 3: Raw Framework** | `.jsx`, `.svelte`, `.vue` source files | Full SSR extraction via QuickJS + esbuild | Most npm component libraries |
+
+The server auto-detects which tier a package falls into by examining its `package.json` and file structure.
+
+### How the Rust Server Runs JavaScript
+
+The server embeds two tools:
+
+1. **esbuild** (~8MB binary) — Bundles framework code + component source into a single `.js` file. Resolves all imports. Takes ~50-100ms.
+2. **QuickJS** via `rquickjs` crate (~300KB) — Executes the bundled JS. No V8, no Node.js. Sub-millisecond startup.
+
+```
+Component library + framework compiler
+        │
+        ▼
+esbuild bundles everything → single bundle.js (no external deps)
+        │
+        ▼
+QuickJS executes bundle.js → calls framework SSR function → HTML string
+        │
+        ▼
+Replace markers → HTML template → temple blob (pure Rust from here)
+```
+
+### How npm Packages Are Downloaded (No npm CLI)
+
+The server downloads packages directly via HTTP — no `npm` CLI, no `node_modules`:
+
+```
+1. GET https://registry.npmjs.org/@shadcn/ui
+   → JSON with version info, tarball URL
+
+2. GET https://registry.npmjs.org/@shadcn/ui/-/ui-1.0.0.tgz
+   → Download tarball
+
+3. Extract to .orrery/cache/@shadcn/ui/1.0.0/
+   → Read package.json, detect framework, find component files
+```
+
+This is plain HTTP. Any language can do it. The npm registry is just a REST API.
+
+### Step-By-Step: React Component (Tier 3)
 
 Given a React button from `@shadcn/ui`:
 
@@ -123,60 +172,74 @@ function Button({ text, variant, disabled }) {
 }
 ```
 
-**Step 1 — Import the component on the server:**
+**Step 1 — Server generates an entry script:**
 
-```javascript
-const pkg = require("@shadcn/ui")
-// pkg.Button = the component function
-```
+```rust
+// Rust generates a JS file that imports the framework + component
+fn generate_react_entry(components: &[ComponentFile]) -> String {
+    format!(r#"
+        import React from 'react';
+        import {{ renderToStaticMarkup }} from 'react-dom/server';
+        import {{ Button }} from '@shadcn/ui';
 
-**Step 2 — Read the prop names:**
-
-The engine reads the package's TypeScript types (`.d.ts` files) to find props:
-
-```typescript
-// @shadcn/ui/dist/Button.d.ts (ships with the npm package)
-export interface ButtonProps {
-  text: string;
-  variant: "primary" | "secondary" | "ghost";
-  disabled?: boolean;
+        export function extractAll() {{
+            return {{
+                button: {{
+                    html: renderToStaticMarkup(
+                        React.createElement(Button, {{
+                            text: '___ORRERY_PROP_text___',
+                            variant: '___ORRERY_PROP_variant___',
+                            disabled: '___ORRERY_PROP_disabled___'
+                        }})
+                    )
+                }}
+            }};
+        }}
+    "#)
 }
 ```
 
-Engine extracts: `["text", "variant", "disabled"]`
+**Step 2 — esbuild bundles entry + React + component into ONE file:**
 
-If no `.d.ts` exists, the engine can also look for an `orrery.json` manifest in the package, or detect props by rendering with test values (see below).
-
-**Step 3 — Render with marker props:**
-
-```javascript
-import { renderToStaticMarkup } from "react-dom/server"
-
-const html = renderToStaticMarkup(
-  React.createElement(pkg.Button, {
-    text: "___ORRERY_PROP_text___",
-    variant: "___ORRERY_PROP_variant___",
-    disabled: "___ORRERY_PROP_disabled___"
-  })
-)
-
-// Result: '<button class="btn ___ORRERY_PROP_variant___" disabled="___ORRERY_PROP_disabled___">___ORRERY_PROP_text___</button>'
+```rust
+// esbuild resolves all imports, inlines everything
+Command::new("./esbuild")
+    .args(["entry.js", "--bundle", "--format=esm", "--platform=neutral",
+           "--outfile=.orrery/cache/bundle.js"])
+    .status()?;
+// Output: bundle.js (~150KB) — React + component, zero external deps
 ```
 
-This is just calling React's "give me the HTML string" function. React runs for this one call, on the server, at compile time. Then it's never used again.
+**Step 3 — QuickJS executes the bundle:**
+
+```rust
+use rquickjs::{Runtime, Context};
+
+let runtime = Runtime::new()?;
+let context = Context::full(&runtime)?;
+context.with(|ctx| {
+    let code = std::fs::read_to_string(".orrery/cache/bundle.js")?;
+    ctx.eval::<(), _>(&code)?;
+    let json: String = ctx.eval("JSON.stringify(extractAll())")?;
+    // json = { "button": { "html": "<button class=\"btn ___ORRERY_PROP_variant___\">..." } }
+});
+```
+
+Result: `<button class="btn ___ORRERY_PROP_variant___" disabled="___ORRERY_PROP_disabled___">___ORRERY_PROP_text___</button>`
 
 **Step 4 — Replace markers with temple placeholders:**
 
-```javascript
-const template = html.replace(/___ORRERY_PROP_(\w+)___/g, '{{ input.$1 }}')
-
+```rust
+let template = html.replace("___ORRERY_PROP_text___", "{{ input.text }}")
+                   .replace("___ORRERY_PROP_variant___", "{{ input.variant }}")
+                   .replace("___ORRERY_PROP_disabled___", "{{ input.disabled }}");
 // Result: '<button class="btn {{ input.variant }}" disabled="{{ input.disabled }}">{{ input.text }}</button>'
 ```
 
-**Step 5 — Compile to temple blob:**
+**Step 5 — Compile to temple blob (pure Rust):**
 
-```javascript
-const blob = templeCompile(template)
+```rust
+let blob = temple_dsl::compile(&template);
 // blob = CBOR bytes (compiled template, ready to execute with any props)
 ```
 
@@ -184,59 +247,61 @@ const blob = templeCompile(template)
 
 The engine also captures styles from the component (CSS modules, styled-components output, Tailwind classes) and collects them into a single CSS file.
 
-**Done.** The React component is now an HTML template compiled to a temple blob. React is thrown away. It never runs again. It never goes to the browser.
+**Done.** React is thrown away. It never runs again. It never goes to the browser.
 
-### Step-By-Step: Svelte Component
+### Step-By-Step: Svelte Component (Tier 3)
 
-```svelte
-<!-- Inside a Svelte component library -->
-<script>
-  export let text;
-  export let variant = "primary";
-</script>
-<button class="btn {variant}">{text}</button>
+Svelte packages often ship raw `.svelte` source files (not compiled JS). The Svelte compiler itself must run to produce SSR-capable code.
+
+Real-world example: `@juspay/svelte-ui-components` v2.68.0 ships 67 raw `.svelte` files using Svelte 5 runes (`$props()`, `$derived()`, `$bindable()`).
+
+```
+What the server does:
+1. Download @juspay/svelte-ui-components (component source)
+2. Download svelte (the compiler package)
+3. Generate entry.js that imports svelte/compiler + embeds .svelte sources
+4. esbuild bundles everything → bundle.js (~500KB-1MB)
+5. QuickJS executes bundle.js:
+   a. svelte.compile(source, { generate: 'server' }) → JS code with render()
+   b. Execute compiled JS → get render() function
+   c. render({ text: "___PROP___" }) → HTML string
+6. Replace markers → HTML template → temple blob
 ```
 
-```javascript
-// Svelte components have a .render() method when imported in SSR mode
-import Button from "@my-lib/Button.svelte"
+```rust
+// The generated entry script for Svelte
+fn generate_svelte_entry(component_sources: &[(&str, String)]) -> String {
+    let mut script = String::from("import { compile } from 'svelte/compiler';\n");
 
-const { html, css } = Button.render({
-  text: "___ORRERY_PROP_text___",
-  variant: "___ORRERY_PROP_variant___"
-})
+    for (name, source) in component_sources {
+        let escaped = source.replace('\\', "\\\\").replace('`', "\\`");
+        script.push_str(&format!(r#"
+            const {name}_compiled = compile(`{source}`, {{ generate: 'server', name: '{name}' }});
+            const {name}_module = new Function('return ' + {name}_compiled.js.code)();
+            const {name}_result = {name}_module.default.render({{
+                text: '___ORRERY_PROP_text___',
+                title: '___ORRERY_PROP_title___'
+            }});
+        "#, name = name, source = escaped));
+    }
 
-// html = '<button class="btn ___ORRERY_PROP_variant___">___ORRERY_PROP_text___</button>'
-// css = '.btn { padding: 8px 16px; }'
-
-// Same marker replacement → template → blob
+    script
+}
 ```
 
-### Step-By-Step: Vue Component
+### Step-By-Step: Web Components (Tier 2)
 
-```vue
-<!-- Inside a Vue component library -->
-<template>
-  <button :class="['btn', variant]">{{ text }}</button>
-</template>
-<script setup>
-defineProps(['text', 'variant'])
-</script>
+Some libraries ship Web Component wrappers with custom element tags (e.g., `<sui-card>`, `<sui-button>`). These are simpler — no SSR extraction needed:
+
+```
+1. Download the Web Component JS bundle
+2. Template = just the custom element tag:
+   <sui-button text="{{ input.text }}"></sui-button>
+3. Ship the WC bundle alongside orrery-runtime.js
+4. Browser natively understands custom element tags
 ```
 
-```javascript
-import { createSSRApp } from "vue"
-import { renderToString } from "vue/server-renderer"
-import Button from "@my-lib/Button.vue"
-
-const app = createSSRApp(Button, {
-  text: "___ORRERY_PROP_text___",
-  variant: "___ORRERY_PROP_variant___"
-})
-const html = await renderToString(app)
-
-// Same marker replacement → template → blob
-```
+This is the easiest path for component library authors who want Orrery compatibility.
 
 ### Prop Detection Without TypeScript Types
 
@@ -257,6 +322,28 @@ const testHtml = render(Component, {
 // Diff → "TEST_ab12_text" appears inside the tag → text goes there
 // Diff → "TEST_ab12_variant" appears in class → variant goes there
 ```
+
+### Extraction Caching
+
+Component extraction runs **once per library version**. Results are cached:
+
+```
+.orrery/cache/
+├── @shadcn/ui/1.0.0/
+│   ├── templates/
+│   │   ├── button.html
+│   │   ├── card.html
+│   │   └── dialog.html
+│   ├── styles/
+│   │   └── components.css
+│   └── meta.json           ← version, timestamp, tier used
+├── @juspay/svelte-ui-components/2.68.0/
+│   └── ...
+└── lucide/1.0.0/
+    └── ...
+```
+
+Next server startup with the same library version: cache hit, skip extraction entirely (~5ms to load blobs from disk vs ~3-8 seconds for full extraction).
 
 ---
 
@@ -669,29 +756,49 @@ Backend logic changes = code = PR.
 
 ---
 
-## Framework Peer Dependencies
+## Framework Dependencies (Auto-Downloaded)
 
-The Orrery server needs the framework's SSR function to extract HTML from components. These are optional peer dependencies — you only install the one matching your component library:
+The Orrery server needs framework packages to extract HTML from components (e.g., `react` + `react-dom` for React libraries, `svelte` for Svelte libraries). But the **developer doesn't install these manually**.
 
-```json
-{
-  "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18",
-    "svelte": ">=4",
-    "vue": ">=3"
-  },
-  "peerDependenciesMeta": {
-    "react": { "optional": true },
-    "react-dom": { "optional": true },
-    "svelte": { "optional": true },
-    "vue": { "optional": true }
-  }
-}
+The server auto-downloads what it needs:
+
+```
+1. YAML declares: use: components: "@shadcn/ui"
+2. Server downloads @shadcn/ui from npm registry (HTTP)
+3. Reads package.json → detects React (peerDependencies: { "react": ">=18" })
+4. Downloads react + react-dom from npm registry
+5. esbuild bundles everything → bundle.js
+6. QuickJS extracts HTML → done
+7. React is never used again
 ```
 
-- Using `@shadcn/ui` (React)? → `npm install react react-dom` on the server
-- Using a Svelte library? → `npm install svelte` on the server
-- Using plain HTML templates? → No framework needed at all
+No `npm install`. No `node_modules`. No Node.js. The server handles everything via HTTP downloads and caching.
 
-The framework is **only used at compile time** on the server to extract HTML. It is **never shipped to the browser**. The browser only receives `.html`, `.css`, and the tiny `orrery-runtime.js`.
+- Using `@shadcn/ui` (React)? → Server auto-downloads React
+- Using `@juspay/svelte-ui-components` (Svelte)? → Server auto-downloads Svelte compiler
+- Using plain HTML templates? → Nothing to download
+
+The framework is **only used at compile time** inside the embedded QuickJS runtime. It is **never shipped to the browser**. The browser only receives `.html`, `.css`, and the tiny `orrery-runtime.js`.
+
+---
+
+## CDN Cache Versioning
+
+How the CDN ensures users always get fresh content without re-downloading unchanged files:
+
+```
+manifest.json       → Cache-Control: no-cache (always revalidated, ~500 bytes)
+/pages/home/v42.html → Cache-Control: immutable (cached forever)
+/pages/home/v43.html → Cache-Control: immutable (cached forever, NEW URL)
+```
+
+The manifest is tiny (~500 bytes) and always checked for freshness. Page files use versioned URLs — when content changes, a new version URL is created. Old URLs are still valid (cached forever), new URLs are new files. No cache invalidation needed.
+
+```
+YAML changes → server re-renders → stores /pages/home/v43.html → updates manifest version to v43
+                                                                    │
+Next user visit → fetches manifest (no-cache) → sees v43 (was v42) → fetches new page URLs
+                                                                       │
+Already-cached v42 files → still valid, just unused
+New v43 files → fetched from CDN, cached forever
+```

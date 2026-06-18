@@ -8,7 +8,7 @@ All packages needed to run Orrery across platforms.
 
 | # | Package | Language | Required | Purpose |
 |---|---------|----------|----------|---------|
-| 1 | `@orrery/server` | Rust + NAPI-RS | Yes (backend) | YAML parse, `use:` resolution, SSR component extraction, temple render, pre-render, StorageAdapter |
+| 1 | `@orrery/server` | Rust | Yes (backend) | YAML parse, `use:` resolution, SSR component extraction (embedded QuickJS + esbuild), temple render, pre-render, StorageAdapter |
 | 2 | `temple-dsl` | Rust (dependency) | Yes (internal) | Expression engine, blob compile/render |
 | 3 | `@orrery/web` | TypeScript | Yes (web) | innerHTML, events, virtual scroll, built-in actions |
 | 4 | `@orrery/ios` | Swift | Yes (iOS) | FlatBuffers/JSON decode, UIKit rendering, built-in actions |
@@ -23,24 +23,14 @@ npm install @orrery/web
 ```
 1 package. Includes built-in actions and event handling.
 
-**Backend (Node.js):**
-```
-npm install @orrery/server
-```
-1 package. Rust binary via NAPI-RS. Includes temple-dsl internally.
-
-If using framework component libraries, install the framework as a peer dependency (SSR extraction at compile time only — never shipped to browser):
-```
-npm install react react-dom    # if using React component libraries
-npm install svelte             # if using Svelte component libraries
-npm install vue                # if using Vue component libraries
-```
-
-**Backend (pure Rust):**
+**Backend (Rust binary):**
 ```toml
 [dependencies]
 orrery-server = "1.0"
 ```
+1 crate. Pure Rust binary (~25-30MB). Includes temple-dsl, embedded QuickJS (~300KB), and esbuild (~8MB) internally. No Node.js required.
+
+Framework packages (React, Svelte, Vue) are **auto-downloaded** by the server when needed — the developer never installs them manually. The server reads the component library's `package.json`, detects which framework it uses, and downloads the framework from the npm registry via HTTP.
 
 **iOS:**
 ```swift
@@ -62,7 +52,7 @@ implementation("com.orrery:android:1.0.0")
 source-crafter/
 ├── crates/
 │   ├── engine-core/          # Core engine: YAML parsing, view tree, serialization
-│   │   ├── Cargo.toml        # depends on temple-dsl, serde, serde_yaml, flatbuffers
+│   │   ├── Cargo.toml        # depends on temple-dsl, rquickjs, serde, serde_yaml, flatbuffers
 │   │   └── src/
 │   │       ├── lib.rs         # Public API: parse, render, serialize, pre-render
 │   │       ├── parser/        # YAML → PageTree (including `use:` resolution)
@@ -70,7 +60,9 @@ source-crafter/
 │   │       ├── tree/          # View tree construction, integer type ID assignment
 │   │       ├── serializer/    # HTML, FlatBuffers, JSON output
 │   │       ├── storage/       # StorageAdapter trait + built-in adapters (filesystem, memory)
-│   │       ├── manifest/      # Route manifest generation
+│   │       ├── manifest/      # Route manifest generation (versioned URLs)
+│   │       ├── extract/       # Component extraction: npm download, tier detection, esbuild + QuickJS SSR
+│   │       ├── registry/      # npm registry HTTP client (package metadata, tarball download, caching)
 │   │       └── generated/     # Types from type-crafter (spec.yaml)
 │   │
 │   ├── temple-bridge/        # Bridge between engine-core and temple-dsl
@@ -89,11 +81,10 @@ source-crafter/
 │           └── extensions.rs  # Platform extension dispatch
 │
 ├── packages/
-│   ├── server/               # @orrery/server (Node.js NAPI-RS bindings)
-│   │   ├── package.json
+│   ├── server/               # @orrery/server (Rust binary, embeds QuickJS + esbuild)
+│   │   ├── Cargo.toml
 │   │   └── src/
-│   │       └── lib.rs        # napi-rs exports: createServer, render, registerHandler, preRender
-│   │                          # SSR extraction: uses React/Svelte/Vue SSR as optional peer deps
+│   │       └── main.rs       # Server binary: watches YAML, extracts components, pre-renders, serves handlers
 │   │
 │   ├── web/                  # @orrery/web (TypeScript client)
 │   │   ├── package.json

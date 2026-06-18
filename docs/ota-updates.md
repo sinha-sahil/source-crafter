@@ -81,10 +81,12 @@ YAML CHANGES (NO APP UPDATE):
 
 NEXT TIME USER OPENS APP:
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-1. Adapter fetches manifest → sees v43 (was v42)
-2. Fetches new FlatBuffers from CDN
-3. Builds native views from new data
-4. User sees updated UI — no app store update needed
+1. Adapter fetches manifest.json (Cache-Control: no-cache — always revalidated, ~500 bytes)
+2. Sees version v43 (was v42) — page URLs have changed
+3. Fetches new FlatBuffers from new versioned URLs (e.g., /pages/home/v43.fb)
+4. Old v42 files still cached (immutable) but no longer referenced
+5. Builds native views from new data
+6. User sees updated UI — no app store update needed
 
 BACKGROUND UPDATE (WHILE APP IS OPEN):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -218,6 +220,28 @@ Flow with offline support:
 2. Adapter checks local cache for manifest + pages
 3. If cached → render from cache (user sees last-known UI)
 4. When network returns → check for updates → apply diff
+```
+
+---
+
+## CDN Cache Versioning
+
+How the app knows a new version exists, and how the CDN avoids serving stale content:
+
+```
+manifest.json           → Cache-Control: no-cache (always revalidated, ~500 bytes)
+/pages/home/v42.fb      → Cache-Control: immutable (cached forever)
+/pages/home/v43.fb      → Cache-Control: immutable (cached forever, NEW URL)
+```
+
+The manifest is the **only file that's always fresh**. It's tiny (~500 bytes), so revalidation costs nothing. Every page file uses a versioned URL — when content changes, the URL changes. Old URLs stay valid forever (no cache busting needed), new URLs are fetched fresh.
+
+```
+Why this works:
+- manifest.json = no-cache = adapter always gets the latest version number
+- Page files = versioned URLs = new version = new URL = CDN cache miss = fresh content
+- Old version files = still cached = if user goes back (offline), they still work
+- No cache invalidation API needed — just generate new URLs
 ```
 
 ---
