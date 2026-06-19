@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orrery Transitions — Primitives + Playground</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    padding: 32px;
+    line-height: 1.6;
+  }
+
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  h2 {
+    font-size: 20px;
+    margin-top: 48px;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #30363d;
+    color: #58a6ff;
+  }
+  h3 {
+    font-size: 15px;
+    margin-top: 24px;
+    margin-bottom: 12px;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .subtitle { color: #8b949e; font-size: 14px; margin-bottom: 32px; }
+
+  /* ===== PLAYGROUND ===== */
+  .playground {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 40px;
+  }
+
+  @media (max-width: 1100px) {
+    .playground { grid-template-columns: 1fr; }
+  }
+
+  .pg-panel {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .pg-panel h3 {
+    margin-top: 0;
+    margin-bottom: 16px;
+    color: #58a6ff;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 14px;
+  }
+
+  /* Sliders */
+  .prop-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+
+  .prop-row label {
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    color: #8b949e;
+    width: 70px;
+    flex-shrink: 0;
+  }
+
+  .prop-row input[type="range"] {
+    flex: 1;
+    accent-color: #58a6ff;
+    height: 4px;
+  }
+
+  .prop-row .val {
+    font-size: 11px;
+    font-family: monospace;
+    color: #58a6ff;
+    width: 50px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .prop-row input[type="checkbox"] {
+    accent-color: #238636;
+    width: 16px;
+    height: 16px;
+  }
+
+  .prop-row select {
+    flex: 1;
+    background: #0d1117;
+    color: #e6edf3;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Preview area */
+  .pg-preview {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 350px;
+    position: relative;
+  }
+
+  .pg-stage {
+    width: 120px;
+    height: 120px;
+    background: #238636;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: white;
+    font-weight: bold;
+    position: relative;
+  }
+
+  .pg-btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .pg-btn {
+    background: #238636;
+    color: white;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .pg-btn:hover { background: #2ea043; }
+
+  .pg-btn.exit-btn { background: #da3633; }
+  .pg-btn.exit-btn:hover { background: #f85149; }
+
+  .pg-btn.while-btn { background: #58a6ff; }
+  .pg-btn.while-btn:hover { background: #79c0ff; }
+
+  .pg-btn.reset-btn { background: #30363d; }
+  .pg-btn.reset-btn:hover { background: #484f58; }
+
+  /* YAML output */
+  .pg-yaml {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .pg-yaml h3 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    color: #58a6ff;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 14px;
+  }
+
+  .yaml-output {
+    background: #0d1117;
+    border-radius: 8px;
+    padding: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    color: #e6edf3;
+    white-space: pre;
+    overflow-x: auto;
+    min-height: 280px;
+  }
+
+  .yaml-key { color: #ff7b72; }
+  .yaml-val { color: #a5d6ff; }
+  .yaml-str { color: #a5d6ff; }
+  .yaml-comment { color: #484f58; }
+
+  /* Phase tabs */
+  .phase-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+  }
+  .phase-tab {
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #30363d;
+    background: #0d1117;
+    color: #8b949e;
+  }
+  .phase-tab.active {
+    background: #238636;
+    color: white;
+    border-color: #238636;
+  }
+  .phase-tab.active-exit {
+    background: #da3633;
+    color: white;
+    border-color: #da3633;
+  }
+  .phase-tab.active-while {
+    background: #58a6ff;
+    color: white;
+    border-color: #58a6ff;
+  }
+
+  .phase-content { display: none; }
+  .phase-content.visible { display: block; }
+
+  /* ===== SHORTCUTS GRID ===== */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+  }
+  .card:hover { border-color: #58a6ff; }
+
+  .card .label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .card .yaml {
+    font-size: 10px;
+    color: #7d8590;
+    font-family: 'JetBrains Mono', monospace;
+    background: #0d1117;
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin-top: 8px;
+  }
+
+  .demo-box {
+    width: 50px;
+    height: 50px;
+    background: #238636;
+    border-radius: 8px;
+    margin: 12px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: white;
+    font-weight: bold;
+  }
+
+  /* ===== EASING VIS ===== */
+  .easing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+
+  .easing-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+  }
+  .easing-card:hover { border-color: #58a6ff; }
+
+  .easing-card .label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .easing-card .desc {
+    font-size: 11px;
+    color: #8b949e;
+    margin-bottom: 12px;
+  }
+  .easing-track {
+    height: 4px;
+    background: #21262d;
+    border-radius: 2px;
+    position: relative;
+    margin-top: 8px;
+  }
+  .easing-dot {
+    width: 14px;
+    height: 14px;
+    background: #58a6ff;
+    border-radius: 50%;
+    position: absolute;
+    top: -5px;
+    left: 0;
+  }
+
+  /* ===== STAGGER DEMO ===== */
+  .stagger-stage {
+    display: flex;
+    gap: 10px;
+    margin: 16px 0;
+    flex-wrap: wrap;
+  }
+  .stagger-item {
+    width: 44px;
+    height: 44px;
+    background: #238636;
+    border-radius: 8px;
+    opacity: 0;
+  }
+
+  /* Section description */
+  .section-desc {
+    font-size: 13px;
+    color: #8b949e;
+    margin-bottom: 16px;
+  }
+
+  /* Duration guide */
+  .dur-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 6px 0;
+  }
+  .dur-label {
+    font-size: 12px;
+    color: #8b949e;
+    width: 180px;
+    flex-shrink: 0;
+  }
+  .dur-bar {
+    height: 22px;
+    background: #238636;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+    font-size: 11px;
+    color: white;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<h1>Orrery Transitions</h1>
+<p class="subtitle">8 primitives. Infinite combinations. Click cards to preview, or use the playground to build custom transitions.</p>
+
+<!-- ============================= -->
+<!-- PLAYGROUND                     -->
+<!-- ============================= -->
+<h2>Playground</h2>
+<p class="section-desc">Adjust properties and see the animation in real time. The YAML output updates as you change values.</p>
+
+<div class="playground">
+
+  <!-- LEFT: Controls -->
+  <div class="pg-panel">
+    <div class="phase-tabs">
+      <div class="phase-tab active" onclick="switchPhase('enter', this)">Enter</div>
+      <div class="phase-tab" onclick="switchPhase('exit', this)">Exit</div>
+      <div class="phase-tab" onclick="switchPhase('while', this)">While</div>
+    </div>
+
+    <!-- ENTER controls -->
+    <div class="phase-content visible" id="controls-enter">
+      <div class="prop-row">
+        <label>opacity</label>
+        <input type="checkbox" id="enter-opacity-on" checked onchange="updateYaml()">
+        <input type="range" id="enter-opacity-from" min="0" max="1" step="0.1" value="0" oninput="updateYaml()">
+        <span class="val" id="enter-opacity-from-v">0</span>
+      </div>
+      <div class="prop-row">
+        <label>y</label>
+        <input type="checkbox" id="enter-y-on" checked onchange="updateYaml()">
+        <input type="range" id="enter-y-from" min="-100" max="100" step="5" value="30" oninput="updateYaml()">
+        <span class="val" id="enter-y-from-v">30</span>
+      </div>
+      <div class="prop-row">
+        <label>x</label>
+        <input type="checkbox" id="enter-x-on" onchange="updateYaml()">
+        <input type="range" id="enter-x-from" min="-100" max="100" step="5" value="0" oninput="updateYaml()">
+        <span class="val" id="enter-x-from-v">0</span>
+      </div>
+      <div class="prop-row">
+        <label>scale</label>
+        <input type="checkbox" id="enter-scale-on" onchange="updateYaml()">
+        <input type="range" id="enter-scale-from" min="0" max="2" step="0.05" value="0.8" oninput="updateYaml()">
+        <span class="val" id="enter-scale-from-v">0.8</span>
+      </div>
+      <div class="prop-row">
+        <label>rotate</label>
+        <input type="checkbox" id="enter-rotate-on" onchange="updateYaml()">
+        <input type="range" id="enter-rotate-from" min="-360" max="360" step="5" value="-90" oninput="updateYaml()">
+        <span class="val" id="enter-rotate-from-v">-90</span>
+      </div>
+      <div class="prop-row">
+        <label>blur</label>
+        <input type="checkbox" id="enter-blur-on" onchange="updateYaml()">
+        <input type="range" id="enter-blur-from" min="0" max="20" step="1" value="8" oninput="updateYaml()">
+        <span class="val" id="enter-blur-from-v">8</span>
+      </div>
+      <div class="prop-row">
+        <label>duration</label>
+        <input type="range" id="enter-duration" min="50" max="1500" step="50" value="400" oninput="updateYaml()">
+        <span class="val" id="enter-duration-v">400ms</span>
+      </div>
+      <div class="prop-row">
+        <label>easing</label>
+        <select id="enter-easing" onchange="updateYaml()">
+          <option value="ease-out" selected>ease-out</option>
+          <option value="ease-in">ease-in</option>
+          <option value="ease-in-out">ease-in-out</option>
+          <option value="linear">linear</option>
+          <option value="cubic-bezier(0.05, 0.7, 0.1, 1)">m3-emphasized-decel</option>
+          <option value="cubic-bezier(0.2, 0, 0, 1)">m3-standard</option>
+          <option value="cubic-bezier(0.68, -0.55, 0.27, 1.55)">spring</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- EXIT controls -->
+    <div class="phase-content" id="controls-exit">
+      <div class="prop-row">
+        <label>opacity</label>
+        <input type="checkbox" id="exit-opacity-on" checked onchange="updateYaml()">
+        <input type="range" id="exit-opacity-to" min="0" max="1" step="0.1" value="0" oninput="updateYaml()">
+        <span class="val" id="exit-opacity-to-v">0</span>
+      </div>
+      <div class="prop-row">
+        <label>y</label>
+        <input type="checkbox" id="exit-y-on" onchange="updateYaml()">
+        <input type="range" id="exit-y-to" min="-100" max="100" step="5" value="-30" oninput="updateYaml()">
+        <span class="val" id="exit-y-to-v">-30</span>
+      </div>
+      <div class="prop-row">
+        <label>x</label>
+        <input type="checkbox" id="exit-x-on" onchange="updateYaml()">
+        <input type="range" id="exit-x-to" min="-100" max="100" step="5" value="0" oninput="updateYaml()">
+        <span class="val" id="exit-x-to-v">0</span>
+      </div>
+      <div class="prop-row">
+        <label>scale</label>
+        <input type="checkbox" id="exit-scale-on" checked onchange="updateYaml()">
+        <input type="range" id="exit-scale-to" min="0" max="2" step="0.05" value="0.8" oninput="updateYaml()">
+        <span class="val" id="exit-scale-to-v">0.8</span>
+      </div>
+      <div class="prop-row">
+        <label>rotate</label>
+        <input type="checkbox" id="exit-rotate-on" onchange="updateYaml()">
+        <input type="range" id="exit-rotate-to" min="-360" max="360" step="5" value="90" oninput="updateYaml()">
+        <span class="val" id="exit-rotate-to-v">90</span>
+      </div>
+      <div class="prop-row">
+        <label>blur</label>
+        <input type="checkbox" id="exit-blur-on" onchange="updateYaml()">
+        <input type="range" id="exit-blur-to" min="0" max="20" step="1" value="8" oninput="updateYaml()">
+        <span class="val" id="exit-blur-to-v">8</span>
+      </div>
+      <div class="prop-row">
+        <label>duration</label>
+        <input type="range" id="exit-duration" min="50" max="1500" step="50" value="200" oninput="updateYaml()">
+        <span class="val" id="exit-duration-v">200ms</span>
+      </div>
+      <div class="prop-row">
+        <label>easing</label>
+        <select id="exit-easing" onchange="updateYaml()">
+          <option value="ease-in" selected>ease-in</option>
+          <option value="ease-out">ease-out</option>
+          <option value="ease-in-out">ease-in-out</option>
+          <option value="linear">linear</option>
+          <option value="cubic-bezier(0.3, 0, 0.8, 0.15)">m3-emphasized-accel</option>
+          <option value="cubic-bezier(0.2, 0, 0, 1)">m3-standard</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- WHILE controls -->
+    <div class="phase-content" id="controls-while">
+      <div class="prop-row">
+        <label>property</label>
+        <select id="while-prop" onchange="updateYaml()">
+          <option value="y">y (float/bounce)</option>
+          <option value="opacity">opacity (pulse)</option>
+          <option value="scale">scale (heartbeat)</option>
+          <option value="rotate">rotate (wiggle/spin)</option>
+          <option value="x">x (shake)</option>
+        </select>
+      </div>
+      <div class="prop-row">
+        <label>mid value</label>
+        <input type="range" id="while-mid" min="-50" max="50" step="1" value="-10" oninput="updateYaml()">
+        <span class="val" id="while-mid-v">-10</span>
+      </div>
+      <div class="prop-row">
+        <label>duration</label>
+        <input type="range" id="while-duration" min="200" max="4000" step="100" value="1500" oninput="updateYaml()">
+        <span class="val" id="while-duration-v">1500ms</span>
+      </div>
+      <div class="prop-row">
+        <label>easing</label>
+        <select id="while-easing" onchange="updateYaml()">
+          <option value="ease-in-out" selected>ease-in-out</option>
+          <option value="linear">linear</option>
+          <option value="ease-out">ease-out</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: Preview -->
+  <div class="pg-preview">
+    <div class="pg-stage" id="pg-box">A</div>
+    <div class="pg-btn-row">
+      <button class="pg-btn" onclick="playEnter()">Play Enter</button>
+      <button class="pg-btn exit-btn" onclick="playExit()">Play Exit</button>
+      <button class="pg-btn while-btn" onclick="playWhileAnim()">Play While</button>
+      <button class="pg-btn reset-btn" onclick="resetBox()">Reset</button>
+    </div>
+    <div class="pg-btn-row">
+      <button class="pg-btn" style="background:#6e40c9" onclick="playSequence()">Enter + While + Exit</button>
+    </div>
+  </div>
+
+  <!-- RIGHT: YAML Output -->
+  <div class="pg-yaml">
+    <h3>Generated YAML</h3>
+    <div class="yaml-output" id="yaml-out"></div>
+  </div>
+</div>
+
+
+<!-- ============================= -->
+<!-- SHORTCUTS                      -->
+<!-- ============================= -->
+<h2>Shortcuts (Expand to Primitives)</h2>
+<p class="section-desc">Named shortcuts for common patterns. Click to preview and load into the playground.</p>
+
+<h3>Enter</h3>
+<div class="grid">
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1'},{dur:300,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">fade-in</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 0 -> 1</div>
+  </div>
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1',y:'30->0'},{dur:300,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">slide-up</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 0 -> 1, y: 30 -> 0</div>
+  </div>
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1',y:'-30->0'},{dur:300,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">slide-down</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 0 -> 1, y: -30 -> 0</div>
+  </div>
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1',x:'30->0'},{dur:300,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">slide-left</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 0 -> 1, x: 30 -> 0</div>
+  </div>
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1',x:'-30->0'},{dur:300,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">slide-right</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 0 -> 1, x: -30 -> 0</div>
+  </div>
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1',scale:'0.8->1'},{dur:300,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">scale-in</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 0 -> 1, scale: 0.8 -> 1</div>
+  </div>
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1',scale:'0.3->1'},{dur:400,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">scale-up</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 0 -> 1, scale: 0.3 -> 1</div>
+  </div>
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1',scale:'0.5->1.08->1'},{dur:500,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">pop-in</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">scale: 0.5 -> 1.08 -> 1</div>
+  </div>
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1',rotate:'-90->0'},{dur:500,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">rotate-in</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 0 -> 1, rotate: -90 -> 0</div>
+  </div>
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1',blur:'8->0'},{dur:400,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">blur-in</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 0 -> 1, blur: 8 -> 0</div>
+  </div>
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1',y:'30->0',scale:'0.9->1'},{dur:400,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">slide-scale-up</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">y: 30 -> 0, scale: 0.9 -> 1</div>
+  </div>
+  <div class="card" onclick="loadPreset('enter',{opacity:'0->1',y:'-80->8->0',scale:'0.9->1.02->1'},{dur:600,ease:'ease-out'}); playCardAnim(this,'enter')">
+    <div class="label">drop-in</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">y: -80 -> 8 -> 0</div>
+  </div>
+</div>
+
+<h3>Exit</h3>
+<div class="grid">
+  <div class="card" onclick="playCardExit(this,{opacity:0},{dur:300,ease:'ease-in'})">
+    <div class="label">fade-out</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 1 -> 0</div>
+  </div>
+  <div class="card" onclick="playCardExit(this,{opacity:0,ty:-30},{dur:300,ease:'ease-in'})">
+    <div class="label">slide-out-up</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 1 -> 0, y: 0 -> -30</div>
+  </div>
+  <div class="card" onclick="playCardExit(this,{opacity:0,ty:30},{dur:300,ease:'ease-in'})">
+    <div class="label">slide-out-down</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 1 -> 0, y: 0 -> 30</div>
+  </div>
+  <div class="card" onclick="playCardExit(this,{opacity:0,scale:0.8},{dur:300,ease:'ease-in'})">
+    <div class="label">scale-out</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 1 -> 0, scale: 1 -> 0.8</div>
+  </div>
+  <div class="card" onclick="playCardExit(this,{opacity:0,scale:0},{dur:300,ease:'ease-in'})">
+    <div class="label">zoom-out</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 1 -> 0, scale: 1 -> 0</div>
+  </div>
+  <div class="card" onclick="playCardExit(this,{opacity:0,blur:8},{dur:300,ease:'ease-in'})">
+    <div class="label">blur-out</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 1 -> 0, blur: 0 -> 8</div>
+  </div>
+</div>
+
+<h3>While (Continuous)</h3>
+<div class="grid">
+  <div class="card" onclick="playCardWhile(this,'opacity',{mid:0.4,dur:1500})">
+    <div class="label">pulse</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">opacity: 1 -> 0.4 -> 1</div>
+  </div>
+  <div class="card" onclick="playCardWhile(this,'rotate',{mid:360,dur:1000,noReturn:true})">
+    <div class="label">spin</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">rotate: 0 -> 360</div>
+  </div>
+  <div class="card" onclick="playCardWhile(this,'y',{mid:-12,dur:1000})">
+    <div class="label">bounce</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">y: 0 -> -12 -> 0</div>
+  </div>
+  <div class="card" onclick="playCardWhile(this,'y',{mid:-8,dur:2000})">
+    <div class="label">float</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">y: 0 -> -8 -> 0</div>
+  </div>
+  <div class="card" onclick="playCardWhile(this,'x',{mid:4,dur:400,steps:[-4,4,-4,4,0]})">
+    <div class="label">shake</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">x: 0 -> -4 -> 4 -> -4 -> 0</div>
+  </div>
+  <div class="card" onclick="playCardWhile(this,'rotate',{mid:3,dur:800,steps:[-3,3,-3,0]})">
+    <div class="label">wiggle</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">rotate: 0 -> -3 -> 3 -> -3 -> 0</div>
+  </div>
+  <div class="card" onclick="playCardWhile(this,'scale',{mid:1.15,dur:1200,steps:[1.15,1,1.08,1]})">
+    <div class="label">heartbeat</div>
+    <div class="demo-box">A</div>
+    <div class="yaml">scale: 1 -> 1.15 -> 1 -> 1.08 -> 1</div>
+  </div>
+</div>
+
+<!-- ============================= -->
+<!-- EASING                         -->
+<!-- ============================= -->
+<h2>Easing Functions</h2>
+<p class="section-desc">Controls acceleration. Click any to see the motion curve.</p>
+
+<div class="easing-grid">
+  <div class="easing-card" onclick="playEasingCard(this,'linear')">
+    <div class="label">linear</div>
+    <div class="desc">Constant speed. For spinners, progress bars.</div>
+    <div class="easing-track"><div class="easing-dot"></div></div>
+  </div>
+  <div class="easing-card" onclick="playEasingCard(this,'ease-out')">
+    <div class="label">ease-out</div>
+    <div class="desc">Fast start, slow end. Best for ENTER transitions.</div>
+    <div class="easing-track"><div class="easing-dot"></div></div>
+  </div>
+  <div class="easing-card" onclick="playEasingCard(this,'ease-in')">
+    <div class="label">ease-in</div>
+    <div class="desc">Slow start, fast end. Best for EXIT transitions.</div>
+    <div class="easing-track"><div class="easing-dot"></div></div>
+  </div>
+  <div class="easing-card" onclick="playEasingCard(this,'ease-in-out')">
+    <div class="label">ease-in-out</div>
+    <div class="desc">Slow start and end. For symmetric animations.</div>
+    <div class="easing-track"><div class="easing-dot"></div></div>
+  </div>
+  <div class="easing-card" onclick="playEasingCard(this,'cubic-bezier(0.05, 0.7, 0.1, 1)')">
+    <div class="label">m3-emphasized-decel</div>
+    <div class="desc">Material Design 3 primary entrance easing.</div>
+    <div class="easing-track"><div class="easing-dot"></div></div>
+  </div>
+  <div class="easing-card" onclick="playEasingCard(this,'cubic-bezier(0.3, 0, 0.8, 0.15)')">
+    <div class="label">m3-emphasized-accel</div>
+    <div class="desc">Material Design 3 primary exit easing.</div>
+    <div class="easing-track"><div class="easing-dot"></div></div>
+  </div>
+  <div class="easing-card" onclick="playEasingCard(this,'cubic-bezier(0.2, 0, 0, 1)')">
+    <div class="label">m3-standard</div>
+    <div class="desc">Material Design 3 standard motion.</div>
+    <div class="easing-track"><div class="easing-dot"></div></div>
+  </div>
+  <div class="easing-card" onclick="playEasingCard(this,'cubic-bezier(0.68, -0.55, 0.27, 1.55)')">
+    <div class="label">spring</div>
+    <div class="desc">Overshoots and settles. Playful, iOS-style.</div>
+    <div class="easing-track"><div class="easing-dot"></div></div>
+  </div>
+</div>
+
+
+<!-- ============================= -->
+<!-- STAGGER                        -->
+<!-- ============================= -->
+<h2>Stagger</h2>
+<p class="section-desc">Items animate in sequence. Click to replay. Adjust delay.</p>
+
+<div style="display:flex;gap:16px;align-items:center;margin-bottom:16px">
+  <label style="font-size:13px;color:#8b949e">Stagger delay:</label>
+  <input type="range" id="stagger-delay" min="20" max="150" value="60" style="width:200px;accent-color:#58a6ff" oninput="document.getElementById('stagger-delay-v').textContent=this.value+'ms'">
+  <span id="stagger-delay-v" style="font-size:13px;font-family:monospace;color:#58a6ff">60ms</span>
+  <button class="pg-btn" onclick="playStagger()">Play</button>
+</div>
+
+<div class="stagger-stage" id="stagger-stage">
+  <div class="stagger-item"></div>
+  <div class="stagger-item"></div>
+  <div class="stagger-item"></div>
+  <div class="stagger-item"></div>
+  <div class="stagger-item"></div>
+  <div class="stagger-item"></div>
+  <div class="stagger-item"></div>
+  <div class="stagger-item"></div>
+  <div class="stagger-item"></div>
+  <div class="stagger-item"></div>
+</div>
+
+
+<!-- ============================= -->
+<!-- DURATION GUIDE                 -->
+<!-- ============================= -->
+<h2>Duration Guide</h2>
+<p class="section-desc">Material Design 3 duration tokens. Use as reference.</p>
+
+<div style="max-width:600px">
+  <div class="dur-row"><span class="dur-label">micro (button press)</span><div class="dur-bar" style="width:12%">100ms</div></div>
+  <div class="dur-row"><span class="dur-label">short (tooltip, hover)</span><div class="dur-bar" style="width:18%">150ms</div></div>
+  <div class="dur-row"><span class="dur-label">medium (menu, dropdown)</span><div class="dur-bar" style="width:28%">250ms</div></div>
+  <div class="dur-row"><span class="dur-label">medium (modal enter)</span><div class="dur-bar" style="width:38%">350ms</div></div>
+  <div class="dur-row"><span class="dur-label">long (page transition)</span><div class="dur-bar" style="width:50%">450ms</div></div>
+  <div class="dur-row"><span class="dur-label">long (complex animation)</span><div class="dur-bar" style="width:65%">600ms</div></div>
+  <div class="dur-row"><span class="dur-label">extra-long (hero, morph)</span><div class="dur-bar" style="width:100%">900ms</div></div>
+</div>
+
+
+<script>
+// ===========================
+// PLAYGROUND ENGINE
+// ===========================
+
+const easingNameMap = {
+  'ease-out': 'ease-out',
+  'ease-in': 'ease-in',
+  'ease-in-out': 'ease-in-out',
+  'linear': 'linear',
+  'cubic-bezier(0.05, 0.7, 0.1, 1)': 'm3-emphasized-decel',
+  'cubic-bezier(0.3, 0, 0.8, 0.15)': 'm3-emphasized-accel',
+  'cubic-bezier(0.2, 0, 0, 1)': 'm3-standard',
+  'cubic-bezier(0.68, -0.55, 0.27, 1.55)': 'spring',
+};
+
+let currentPhase = 'enter';
+
+function switchPhase(phase, tab) {
+  currentPhase = phase;
+  document.querySelectorAll('.phase-tab').forEach(t => t.className = 'phase-tab');
+  tab.className = 'phase-tab ' + (phase === 'exit' ? 'active-exit' : phase === 'while' ? 'active-while' : 'active');
+  document.querySelectorAll('.phase-content').forEach(c => c.classList.remove('visible'));
+  document.getElementById('controls-' + phase).classList.add('visible');
+}
+
+function getVal(id) {
+  const el = document.getElementById(id);
+  if (!el) return 0;
+  if (el.type === 'checkbox') return el.checked;
+  return parseFloat(el.value);
+}
+
+function updateYaml() {
+  // Update display values
+  const ids = [
+    'enter-opacity-from', 'enter-y-from', 'enter-x-from', 'enter-scale-from',
+    'enter-rotate-from', 'enter-blur-from', 'enter-duration',
+    'exit-opacity-to', 'exit-y-to', 'exit-x-to', 'exit-scale-to',
+    'exit-rotate-to', 'exit-blur-to', 'exit-duration',
+    'while-mid', 'while-duration'
+  ];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    const vEl = document.getElementById(id + '-v');
+    if (el && vEl) {
+      vEl.textContent = id.includes('duration') ? el.value + 'ms' : el.value;
+    }
+  });
+
+  // Build YAML
+  let yaml = '<span class="yaml-key">transition:</span>\n';
+
+  // Enter
+  let enterProps = [];
+  if (getVal('enter-opacity-on')) enterProps.push(`  <span class="yaml-key">opacity:</span> <span class="yaml-val">${getVal('enter-opacity-from')} -> 1</span>`);
+  if (getVal('enter-y-on') && getVal('enter-y-from') !== 0) enterProps.push(`  <span class="yaml-key">y:</span> <span class="yaml-val">${getVal('enter-y-from')} -> 0</span>`);
+  if (getVal('enter-x-on') && getVal('enter-x-from') !== 0) enterProps.push(`  <span class="yaml-key">x:</span> <span class="yaml-val">${getVal('enter-x-from')} -> 0</span>`);
+  if (getVal('enter-scale-on')) enterProps.push(`  <span class="yaml-key">scale:</span> <span class="yaml-val">${getVal('enter-scale-from')} -> 1</span>`);
+  if (getVal('enter-rotate-on') && getVal('enter-rotate-from') !== 0) enterProps.push(`  <span class="yaml-key">rotate:</span> <span class="yaml-val">${getVal('enter-rotate-from')} -> 0</span>`);
+  if (getVal('enter-blur-on') && getVal('enter-blur-from') !== 0) enterProps.push(`  <span class="yaml-key">blur:</span> <span class="yaml-val">${getVal('enter-blur-from')} -> 0</span>`);
+
+  if (enterProps.length) {
+    const easeLabel = easingNameMap[document.getElementById('enter-easing').value] || document.getElementById('enter-easing').value;
+    yaml += `  <span class="yaml-key">enter:</span>\n`;
+    yaml += enterProps.join('\n') + '\n';
+    yaml += `  <span class="yaml-key">  duration:</span> <span class="yaml-val">${getVal('enter-duration')}</span>\n`;
+    yaml += `  <span class="yaml-key">  easing:</span> <span class="yaml-val">${easeLabel}</span>\n`;
+  }
+
+  // Exit
+  let exitProps = [];
+  if (getVal('exit-opacity-on')) exitProps.push(`  <span class="yaml-key">opacity:</span> <span class="yaml-val">1 -> ${getVal('exit-opacity-to')}</span>`);
+  if (getVal('exit-y-on') && getVal('exit-y-to') !== 0) exitProps.push(`  <span class="yaml-key">y:</span> <span class="yaml-val">0 -> ${getVal('exit-y-to')}</span>`);
+  if (getVal('exit-x-on') && getVal('exit-x-to') !== 0) exitProps.push(`  <span class="yaml-key">x:</span> <span class="yaml-val">0 -> ${getVal('exit-x-to')}</span>`);
+  if (getVal('exit-scale-on')) exitProps.push(`  <span class="yaml-key">scale:</span> <span class="yaml-val">1 -> ${getVal('exit-scale-to')}</span>`);
+  if (getVal('exit-rotate-on') && getVal('exit-rotate-to') !== 0) exitProps.push(`  <span class="yaml-key">rotate:</span> <span class="yaml-val">0 -> ${getVal('exit-rotate-to')}</span>`);
+  if (getVal('exit-blur-on') && getVal('exit-blur-to') !== 0) exitProps.push(`  <span class="yaml-key">blur:</span> <span class="yaml-val">0 -> ${getVal('exit-blur-to')}</span>`);
+
+  if (exitProps.length) {
+    const easeLabel = easingNameMap[document.getElementById('exit-easing').value] || document.getElementById('exit-easing').value;
+    yaml += `\n  <span class="yaml-key">exit:</span>\n`;
+    yaml += exitProps.join('\n') + '\n';
+    yaml += `  <span class="yaml-key">  duration:</span> <span class="yaml-val">${getVal('exit-duration')}</span>\n`;
+    yaml += `  <span class="yaml-key">  easing:</span> <span class="yaml-val">${easeLabel}</span>\n`;
+  }
+
+  // While
+  const whileProp = document.getElementById('while-prop').value;
+  const whileMid = getVal('while-mid');
+  const whileDur = getVal('while-duration');
+  const whileEaseLabel = easingNameMap[document.getElementById('while-easing').value] || document.getElementById('while-easing').value;
+  const whileDefault = whileProp === 'opacity' ? 1 : whileProp === 'scale' ? 1 : 0;
+  yaml += `\n  <span class="yaml-key">while:</span>\n`;
+  yaml += `  <span class="yaml-key">  ${whileProp}:</span> <span class="yaml-val">${whileDefault} -> ${whileMid} -> ${whileDefault}</span>\n`;
+  yaml += `  <span class="yaml-key">  duration:</span> <span class="yaml-val">${whileDur}</span>\n`;
+  yaml += `  <span class="yaml-key">  repeat:</span> <span class="yaml-val">infinite</span>\n`;
+  yaml += `  <span class="yaml-key">  easing:</span> <span class="yaml-val">${whileEaseLabel}</span>`;
+
+  document.getElementById('yaml-out').innerHTML = yaml;
+}
+
+// Playground animation
+function getEnterKeyframes() {
+  const kf = [{}];
+  const from = {};
+  const to = {};
+
+  if (getVal('enter-opacity-on')) { from.opacity = getVal('enter-opacity-from'); to.opacity = 1; }
+  if (getVal('enter-y-on')) { from.transform = (from.transform||'') + ` translateY(${getVal('enter-y-from')}px)`; to.transform = (to.transform||'') + ' translateY(0)'; }
+  if (getVal('enter-x-on')) { from.transform = (from.transform||'') + ` translateX(${getVal('enter-x-from')}px)`; to.transform = (to.transform||'') + ' translateX(0)'; }
+  if (getVal('enter-scale-on')) { from.transform = (from.transform||'') + ` scale(${getVal('enter-scale-from')})`; to.transform = (to.transform||'') + ' scale(1)'; }
+  if (getVal('enter-rotate-on')) { from.transform = (from.transform||'') + ` rotate(${getVal('enter-rotate-from')}deg)`; to.transform = (to.transform||'') + ' rotate(0deg)'; }
+  if (getVal('enter-blur-on')) { from.filter = `blur(${getVal('enter-blur-from')}px)`; to.filter = 'blur(0px)'; }
+
+  return { keyframes: [from, to], duration: getVal('enter-duration'), easing: document.getElementById('enter-easing').value };
+}
+
+function getExitKeyframes() {
+  const from = {};
+  const to = {};
+
+  if (getVal('exit-opacity-on')) { from.opacity = 1; to.opacity = getVal('exit-opacity-to'); }
+  if (getVal('exit-y-on')) { from.transform = (from.transform||'') + ' translateY(0)'; to.transform = (to.transform||'') + ` translateY(${getVal('exit-y-to')}px)`; }
+  if (getVal('exit-x-on')) { from.transform = (from.transform||'') + ' translateX(0)'; to.transform = (to.transform||'') + ` translateX(${getVal('exit-x-to')}px)`; }
+  if (getVal('exit-scale-on')) { from.transform = (from.transform||'') + ' scale(1)'; to.transform = (to.transform||'') + ` scale(${getVal('exit-scale-to')})`; }
+  if (getVal('exit-rotate-on')) { from.transform = (from.transform||'') + ' rotate(0deg)'; to.transform = (to.transform||'') + ` rotate(${getVal('exit-rotate-to')}deg)`; }
+  if (getVal('exit-blur-on')) { from.filter = 'blur(0px)'; to.filter = `blur(${getVal('exit-blur-to')}px)`; }
+
+  return { keyframes: [from, to], duration: getVal('exit-duration'), easing: document.getElementById('exit-easing').value };
+}
+
+function playEnter() {
+  const box = document.getElementById('pg-box');
+  box.getAnimations().forEach(a => a.cancel());
+  const e = getEnterKeyframes();
+  box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none';
+  box.animate(e.keyframes, { duration: e.duration, easing: e.easing, fill: 'both' });
+}
+
+function playExit() {
+  const box = document.getElementById('pg-box');
+  box.getAnimations().forEach(a => a.cancel());
+  box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none';
+  const e = getExitKeyframes();
+  const anim = box.animate(e.keyframes, { duration: e.duration, easing: e.easing, fill: 'forwards' });
+  anim.onfinish = () => { setTimeout(() => { box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none'; anim.cancel(); }, 500); };
+}
+
+function playWhileAnim() {
+  const box = document.getElementById('pg-box');
+  box.getAnimations().forEach(a => a.cancel());
+  box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none';
+
+  const prop = document.getElementById('while-prop').value;
+  const mid = getVal('while-mid');
+  const dur = getVal('while-duration');
+  const easing = document.getElementById('while-easing').value;
+  const defaults = { y: 0, x: 0, opacity: 1, scale: 1, rotate: 0 };
+  const base = defaults[prop] || 0;
+
+  let kf;
+  if (prop === 'opacity') {
+    kf = [{ opacity: base }, { opacity: mid }, { opacity: base }];
+  } else if (prop === 'scale') {
+    kf = [{ transform: `scale(${base})` }, { transform: `scale(${mid})` }, { transform: `scale(${base})` }];
+  } else if (prop === 'y') {
+    kf = [{ transform: `translateY(${base}px)` }, { transform: `translateY(${mid}px)` }, { transform: `translateY(${base}px)` }];
+  } else if (prop === 'x') {
+    kf = [{ transform: `translateX(${base}px)` }, { transform: `translateX(${mid}px)` }, { transform: `translateX(${base}px)` }];
+  } else if (prop === 'rotate') {
+    kf = [{ transform: `rotate(0deg)` }, { transform: `rotate(${mid}deg)` }, { transform: `rotate(0deg)` }];
+  }
+
+  const anim = box.animate(kf, { duration: dur, easing: easing, iterations: 4 });
+  anim.onfinish = () => { box.style.transform = 'none'; box.style.opacity = '1'; };
+}
+
+function resetBox() {
+  const box = document.getElementById('pg-box');
+  box.getAnimations().forEach(a => a.cancel());
+  box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none';
+}
+
+async function playSequence() {
+  const box = document.getElementById('pg-box');
+  box.getAnimations().forEach(a => a.cancel());
+  box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none';
+
+  // Enter
+  const enter = getEnterKeyframes();
+  const a1 = box.animate(enter.keyframes, { duration: enter.duration, easing: enter.easing, fill: 'both' });
+  await a1.finished;
+
+  // While (3 cycles)
+  const prop = document.getElementById('while-prop').value;
+  const mid = getVal('while-mid');
+  const dur = getVal('while-duration');
+  const easing = document.getElementById('while-easing').value;
+  const defaults = { y: 0, x: 0, opacity: 1, scale: 1, rotate: 0 };
+  const base = defaults[prop] || 0;
+
+  let kf;
+  if (prop === 'opacity') kf = [{ opacity: base }, { opacity: mid }, { opacity: base }];
+  else if (prop === 'scale') kf = [{ transform: `scale(${base})` }, { transform: `scale(${mid})` }, { transform: `scale(${base})` }];
+  else if (prop === 'y') kf = [{ transform: `translateY(0)` }, { transform: `translateY(${mid}px)` }, { transform: `translateY(0)` }];
+  else if (prop === 'x') kf = [{ transform: `translateX(0)` }, { transform: `translateX(${mid}px)` }, { transform: `translateX(0)` }];
+  else if (prop === 'rotate') kf = [{ transform: 'rotate(0deg)' }, { transform: `rotate(${mid}deg)` }, { transform: 'rotate(0deg)' }];
+
+  a1.cancel();
+  box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none';
+  const a2 = box.animate(kf, { duration: dur, easing: easing, iterations: 3 });
+  await a2.finished;
+
+  // Exit
+  box.style.transform = 'none'; box.style.opacity = '1'; box.style.filter = 'none';
+  const exit = getExitKeyframes();
+  const a3 = box.animate(exit.keyframes, { duration: exit.duration, easing: exit.easing, fill: 'forwards' });
+  await a3.finished;
+  setTimeout(() => { a3.cancel(); box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none'; }, 800);
+}
+
+
+// ===========================
+// SHORTCUT CARD ANIMATIONS
+// ===========================
+
+function playCardAnim(card, type) {
+  const box = card.querySelector('.demo-box');
+  box.getAnimations().forEach(a => a.cancel());
+  const e = getEnterKeyframes();
+  box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none';
+  const anim = box.animate(e.keyframes, { duration: e.duration, easing: e.easing, fill: 'both' });
+  anim.onfinish = () => { setTimeout(() => { anim.cancel(); box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none'; }, 300); };
+}
+
+function playCardExit(card, props, opts) {
+  const box = card.querySelector('.demo-box');
+  box.getAnimations().forEach(a => a.cancel());
+  box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none';
+
+  const from = { opacity: 1, transform: 'translateY(0) scale(1)', filter: 'blur(0px)' };
+  const to = {};
+  let tr = '';
+  if ('opacity' in props) to.opacity = props.opacity;
+  if ('ty' in props) tr += ` translateY(${props.ty}px)`;
+  if ('tx' in props) tr += ` translateX(${props.tx}px)`;
+  if ('scale' in props) tr += ` scale(${props.scale})`;
+  if ('rotate' in props) tr += ` rotate(${props.rotate}deg)`;
+  if (tr) to.transform = tr;
+  if ('blur' in props) to.filter = `blur(${props.blur}px)`;
+
+  const anim = box.animate([from, to], { duration: opts.dur, easing: opts.ease, fill: 'forwards' });
+  anim.onfinish = () => { setTimeout(() => { anim.cancel(); box.style.opacity = '1'; box.style.transform = 'none'; box.style.filter = 'none'; }, 500); };
+}
+
+function playCardWhile(card, prop, opts) {
+  const box = card.querySelector('.demo-box');
+  box.getAnimations().forEach(a => a.cancel());
+  box.style.opacity = '1'; box.style.transform = 'none';
+
+  const base = (prop === 'opacity' || prop === 'scale') ? 1 : 0;
+  let kf;
+
+  if (opts.steps) {
+    kf = opts.steps.map(v => {
+      if (prop === 'opacity') return { opacity: v };
+      if (prop === 'scale') return { transform: `scale(${v})` };
+      if (prop === 'y') return { transform: `translateY(${v}px)` };
+      if (prop === 'x') return { transform: `translateX(${v}px)` };
+      if (prop === 'rotate') return { transform: `rotate(${v}deg)` };
+    });
+    kf.unshift(prop === 'opacity' ? { opacity: base } : prop === 'scale' ? { transform: `scale(${base})` } : { transform: prop === 'y' ? 'translateY(0)' : prop === 'x' ? 'translateX(0)' : 'rotate(0deg)' });
+  } else if (opts.noReturn) {
+    if (prop === 'rotate') kf = [{ transform: 'rotate(0deg)' }, { transform: `rotate(${opts.mid}deg)` }];
+  } else {
+    if (prop === 'opacity') kf = [{ opacity: base }, { opacity: opts.mid }, { opacity: base }];
+    else if (prop === 'scale') kf = [{ transform: `scale(${base})` }, { transform: `scale(${opts.mid})` }, { transform: `scale(${base})` }];
+    else if (prop === 'y') kf = [{ transform: 'translateY(0)' }, { transform: `translateY(${opts.mid}px)` }, { transform: 'translateY(0)' }];
+    else if (prop === 'x') kf = [{ transform: 'translateX(0)' }, { transform: `translateX(${opts.mid}px)` }, { transform: 'translateX(0)' }];
+    else if (prop === 'rotate') kf = [{ transform: 'rotate(0deg)' }, { transform: `rotate(${opts.mid}deg)` }, { transform: 'rotate(0deg)' }];
+  }
+
+  const anim = box.animate(kf, { duration: opts.dur, easing: 'ease-in-out', iterations: 3 });
+  anim.onfinish = () => { box.style.transform = 'none'; box.style.opacity = '1'; };
+}
+
+function loadPreset(phase, props, opts) {
+  // Reset all checkboxes
+  ['opacity','y','x','scale','rotate','blur'].forEach(p => {
+    const cb = document.getElementById(`enter-${p}-on`);
+    if (cb) cb.checked = false;
+  });
+
+  if (props.opacity) {
+    document.getElementById('enter-opacity-on').checked = true;
+    const parts = props.opacity.split('->');
+    document.getElementById('enter-opacity-from').value = parseFloat(parts[0]);
+  }
+  if (props.y) {
+    document.getElementById('enter-y-on').checked = true;
+    const parts = props.y.split('->');
+    document.getElementById('enter-y-from').value = parseFloat(parts[0]);
+  }
+  if (props.x) {
+    document.getElementById('enter-x-on').checked = true;
+    const parts = props.x.split('->');
+    document.getElementById('enter-x-from').value = parseFloat(parts[0]);
+  }
+  if (props.scale) {
+    document.getElementById('enter-scale-on').checked = true;
+    const parts = props.scale.split('->');
+    document.getElementById('enter-scale-from').value = parseFloat(parts[0]);
+  }
+  if (props.rotate) {
+    document.getElementById('enter-rotate-on').checked = true;
+    const parts = props.rotate.split('->');
+    document.getElementById('enter-rotate-from').value = parseFloat(parts[0]);
+  }
+  if (props.blur) {
+    document.getElementById('enter-blur-on').checked = true;
+    const parts = props.blur.split('->');
+    document.getElementById('enter-blur-from').value = parseFloat(parts[0]);
+  }
+
+  if (opts.dur) document.getElementById('enter-duration').value = opts.dur;
+  if (opts.ease) {
+    const sel = document.getElementById('enter-easing');
+    for (let o of sel.options) {
+      if (easingNameMap[o.value] === opts.ease || o.value === opts.ease) { o.selected = true; break; }
+    }
+  }
+
+  switchPhase('enter', document.querySelector('.phase-tab'));
+  updateYaml();
+}
+
+
+// ===========================
+// EASING CARDS
+// ===========================
+
+function playEasingCard(card, easing) {
+  const dot = card.querySelector('.easing-dot');
+  dot.getAnimations().forEach(a => a.cancel());
+  dot.style.left = '0';
+  dot.animate(
+    [{ left: '0' }, { left: 'calc(100% - 14px)' }],
+    { duration: 1200, easing: easing, fill: 'forwards' }
+  );
+}
+
+
+// ===========================
+// STAGGER
+// ===========================
+
+function playStagger() {
+  const stage = document.getElementById('stagger-stage');
+  const items = stage.querySelectorAll('.stagger-item');
+  const delay = parseInt(document.getElementById('stagger-delay').value);
+
+  items.forEach(el => { el.getAnimations().forEach(a => a.cancel()); el.style.opacity = '0'; el.style.transform = 'translateY(30px)'; });
+
+  items.forEach((el, i) => {
+    setTimeout(() => {
+      el.animate(
+        [{ opacity: 0, transform: 'translateY(30px)' }, { opacity: 1, transform: 'translateY(0)' }],
+        { duration: 400, easing: 'ease-out', fill: 'forwards' }
+      );
+    }, i * delay);
+  });
+}
+
+
+// Init
+updateYaml();
+</script>
+
+</body>
+</html>
