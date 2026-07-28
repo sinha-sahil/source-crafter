@@ -1,3 +1,0 @@
-# Orrery engine type spec — source of truth for type-crafter
-# Generates: src/generated/types.ts + crates/engine-core/src/generated/mod.rs
-# Types will be defined in PR 2
